@@ -1,0 +1,84 @@
+# Nixin configuration. Copy to nixin.toml (`nixin init` does it) and change only what you need.
+# Every value below is the default. API keys NEVER go here — put them in .env.
+
+[pc]
+# name = "My-PC"            # shown on the phone
+# data_dir = ""             # default: %LOCALAPPDATA%\Nixin (Windows) / ~/.local/share/Nixin
+
+[link]
+host = "0.0.0.0"             # interface for the phone link (WSS). Use your LAN IP to be stricter.
+port = 8765
+advertise = []               # extra addresses for the pairing QR, e.g. your Tailscale IP ["100.101.102.103"]
+heartbeat_seconds = 15
+pairing_minutes = 5
+
+[dashboard]
+enabled = true
+host = "127.0.0.1"           # keep it on localhost
+port = 8766
+open_browser = true
+mirror_fps = 1.0
+
+[assistant]
+reply_language = "auto"      # auto | hinglish | english
+reply_on = "auto"            # auto (where you spoke) | pc | phone | both
+confirm = "smart"            # smart | trusted | always   (wake-word commands always confirm)
+confirm_timeout_seconds = 30
+default_message_channel = "whatsapp"   # whatsapp | sms
+music_app = "youtube"        # youtube | spotify
+max_agent_steps = 15
+max_task_seconds = 180
+verify_finish = true         # double-check agent results with the verifier model
+default_country_code = "91"  # for 10-digit numbers
+history_turns = 6
+
+[privacy]
+cloud_llm = true             # command text + compact screen text -> LLM providers
+cloud_stt = true             # voice audio -> Groq Whisper (else local faster-whisper)
+cloud_vision = false         # screenshots -> vision model (agent `look`)
+
+[voice]
+enabled = true
+push_to_talk = "<ctrl>+<alt>+n"
+kill_switch = "<ctrl>+<alt>+k"
+wake_word = false
+wake_word_model = "hey_jarvis"   # or a path to your own "hey nixin" .onnx model
+wake_word_threshold = 0.5
+stt = ["groq", "local"]
+groq_stt_model = "whisper-large-v3-turbo"
+local_stt_model = "small"        # tiny | base | small | medium (faster-whisper)
+stt_language = ""                # "" = auto, or "hi" / "en"
+tts = ["edge", "pyttsx3"]        # edge = free neural voices (online); pyttsx3 = offline; piper = offline
+edge_voice = "en-IN-NeerjaNeural"   # try hi-IN-SwaraNeural or en-IN-PrabhatNeural
+piper_model = ""
+max_record_seconds = 12.0
+silence_seconds = 1.2
+
+# Model roles: ordered "provider:model" candidates. The first one that has a key,
+# exists, and is inside its free-tier budget is used; on 429/outage Nixin falls through.
+[models]
+classifier = ["groq:openai/gpt-oss-20b", "cerebras:gpt-oss-120b", "gemini:gemini-2.5-flash-lite", "openrouter:openai/gpt-oss-20b:free"]
+planner = ["groq:openai/gpt-oss-120b", "cerebras:gpt-oss-120b", "groq:openai/gpt-oss-20b", "gemini:gemini-2.5-flash", "openrouter:openai/gpt-oss-120b:free"]
+verifier = ["groq:qwen/qwen3.8-27b", "groq:qwen/qwen3-32b", "groq:openai/gpt-oss-20b", "gemini:gemini-2.5-flash-lite"]
+vision = ["groq:meta-llama/llama-4-scout-17b-16e-instruct", "gemini:gemini-2.5-flash", "openrouter:qwen/qwen2.5-vl-72b-instruct:free"]
+
+# Providers (OpenAI-compatible). Override base_url / enable local Ollama here.
+# [providers.ollama]
+# enabled = true
+# base_url = "http://127.0.0.1:11434/v1"
+
+# Local free-tier budgets per candidate (Nixin waits/falls back BEFORE the provider says 429).
+# Check your real limits in each console and adjust.
+# [limits."groq:openai/gpt-oss-120b"]
+# rpm = 30
+# tpm = 8000
+# rpd = 1000
+# tpd = 200000
+
+[adb]
+enabled = false              # ADB "power mode": real Wi-Fi/Bluetooth/data toggles, screen record
+serial = ""                  # e.g. "192.168.1.23:37215" from Wireless debugging
+adb_path = "adb"
+
+[blocklist]
+extra_packages = []          # more apps Nixin must never touch (banking/UPI/password apps are built in)

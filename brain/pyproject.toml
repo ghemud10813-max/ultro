@@ -68,4 +68,7 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "ASYNC"]
-ignore = ["E501", "B008"]
+ignore = ["E501", "B008", "ASYNC109", "ASYNC230"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"../shared/protocol/methods.json" = "nixin/link/methods.json"

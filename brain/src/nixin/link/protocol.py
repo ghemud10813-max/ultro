@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from functools import lru_cache
+from functools import cache, lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -29,7 +29,7 @@ def registry() -> dict[str, Any]:
     return json.loads(_methods_file().read_text(encoding="utf-8"))
 
 
-@lru_cache(maxsize=None)
+@cache
 def _validator(method: str) -> Draft202012Validator:
     return Draft202012Validator(registry()["methods"][method]["params"])
 

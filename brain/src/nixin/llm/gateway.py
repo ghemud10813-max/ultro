@@ -98,7 +98,7 @@ class Gateway:
                     keys = []
                 base = base.replace("{account_id}", acct)
             self.providers[name] = ProviderState(name, base, keys, dict(p.headers), p.timeout_seconds, p.enabled)
-        for role, specs in self.cfg.models.items():
+        for specs in self.cfg.models.values():
             for spec in specs:
                 if spec not in self.candidates and ":" in spec:
                     prov, model = spec.split(":", 1)
@@ -138,7 +138,7 @@ class Gateway:
             ids = await list_models(self.http, p.base_url, p.keys[0] or None, p.headers)
             p.models = ids
             report[name] = {"status": "ok" if ids is not None else "unreachable", "models": len(ids or [])}
-        for spec, c in self.candidates.items():
+        for c in self.candidates.values():
             p = self.providers.get(c.provider)
             if p and p.models is not None:
                 c.available = c.model in p.models

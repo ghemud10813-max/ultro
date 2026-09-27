@@ -30,7 +30,7 @@ from nixin.router.router import Intent, route
 
 _HINDI_WORDS = re.compile(
     r"\b(?:hai|hain|karo|kar|kardo|ko|do|de|bhej|bhejo|bol|bolo|ki|ka|ke|mein|me|pe|par|nahi|kya|aur|kholo|khol|"
-    r"chalao|chala|laga|lagao|badha|kam|band|batao|bata|mera|meri|mere|abhi|kal|aaj|baje|yaar|zara|jaldi)\b", re.I)
+    r"chalao|chala|laga|lagao|badha|kam|band|batao|bata|mera|meri|mere|abhi|kal|aaj|baje|yaar|zara|jaldi|ruk|ruko|ja|jao|bas|haan|chal|raha|rahi|hoon|hu|tum|aap|mujhe|kuch|kaise|kyun|kaun|wala|wali)\b", re.I)
 
 
 class Speaker(Protocol):

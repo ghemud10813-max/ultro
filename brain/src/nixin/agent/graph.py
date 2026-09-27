@@ -22,6 +22,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, TypedDict
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
@@ -29,7 +30,6 @@ from nixin.agent import prompts
 from nixin.agent.screen import find_element, render, screen_hash
 from nixin.agent.tools import (
     PLANNER_TOOLS,
-    TERMINAL_TOOLS,
     UI_TOOLS,
     action_signature,
     check_tool,
@@ -133,7 +133,7 @@ class PhoneAgent:
         return res
 
     # ------------------------------------------------------------------ nodes
-    async def _observe(self, state: AgentState, config: dict) -> dict:
+    async def _observe(self, state: AgentState, config: RunnableConfig) -> dict:
         ctx: TaskContext = config["configurable"]["ctx"]
         if (o := self._check_stop(state, ctx)) is not None:
             return {"outcome": o}
@@ -159,7 +159,7 @@ class PhoneAgent:
     def _after_observe(self, state: AgentState) -> str:
         return "end" if state.get("outcome") else "plan"
 
-    async def _plan(self, state: AgentState, config: dict) -> dict:
+    async def _plan(self, state: AgentState, config: RunnableConfig) -> dict:
         ctx: TaskContext = config["configurable"]["ctx"]
         if (o := self._check_stop(state, ctx)) is not None:
             return {"outcome": o}
@@ -204,7 +204,7 @@ class PhoneAgent:
             return "end"
         return "act" if state.get("pending") else "plan"
 
-    async def _act(self, state: AgentState, config: dict) -> dict:
+    async def _act(self, state: AgentState, config: RunnableConfig) -> dict:
         ctx: TaskContext = config["configurable"]["ctx"]
         if (o := self._check_stop(state, ctx)) is not None:
             return {"outcome": o}
@@ -252,7 +252,7 @@ class PhoneAgent:
             return "verify"
         return "end"
 
-    async def _verify(self, state: AgentState, config: dict) -> dict:
+    async def _verify(self, state: AgentState, config: RunnableConfig) -> dict:
         ctx: TaskContext = config["configurable"]["ctx"]
         claim = state["outcome"] or {}
         try:
