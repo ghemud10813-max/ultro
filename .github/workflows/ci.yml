@@ -50,7 +50,9 @@ jobs:
       - name: Build debug APK + unit tests
         run: ./gradlew --no-daemon assembleDebug testDebugUnitTest
       - name: Lint
-        run: ./gradlew --no-daemon lintDebug
+        run: |
+          ./gradlew --no-daemon lintDebug
+          cat app/build/reports/lint-results-debug.txt || true
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:

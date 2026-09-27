@@ -21,6 +21,7 @@ class AndroidUiNode(val info: AccessibilityNodeInfo) : UiNode {
     override val isEditable: Boolean get() = info.isEditable
     override val isScrollable: Boolean get() = info.isScrollable
     override val isCheckable: Boolean get() = info.isCheckable
+    @Suppress("DEPRECATION") // getChecked() int-state API is 36+ only; the boolean works on every version
     override val isChecked: Boolean get() = info.isChecked
     override val isFocused: Boolean get() = info.isFocused || info.isAccessibilityFocused
     override val isSelected: Boolean get() = info.isSelected

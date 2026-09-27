@@ -41,7 +41,6 @@ android {
         abortOnError = false
         checkReleaseBuilds = false
         textReport = true
-        textOutput = file("stdout")
         disable += setOf("GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion", "ObsoleteLintCustomCheck")
     }
     packaging {
