@@ -1,0 +1,71 @@
+[project]
+name = "nixin"
+version = "1.0.0"
+description = "Nixin — a voice-controlled AI agent on your PC that operates your Android phone."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "websockets>=13",
+    "pydantic>=2.7",
+    "httpx>=0.27",
+    "cryptography>=43",
+    "segno>=1.6",
+    "jsonschema>=4.23",
+    "langgraph>=0.6",
+    "python-dotenv>=1.0",
+    "rich>=13.7",
+    "platformdirs>=4.2",
+    "pillow>=10.4",
+]
+
+[project.optional-dependencies]
+# Microphone, speakers, hotkeys and online TTS. Install on the PC you talk to.
+voice = [
+    "numpy>=1.26",
+    "sounddevice>=0.4.7",
+    "pynput>=1.7.7",
+    "edge-tts>=6.1.12",
+    "miniaudio>=1.61",
+    "pyttsx3>=2.90",
+]
+# Offline speech-to-text fallback (downloads a Whisper model on first use).
+local-stt = ["faster-whisper>=1.0.3"]
+# Always-on wake word (off by default; see docs/SETUP.md).
+wakeword = ["openwakeword>=0.6.0"]
+# Store API keys in Windows Credential Manager / macOS Keychain.
+keyring = ["keyring>=25"]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+nixin = "nixin.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/nixin"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+testpaths = ["tests"]
+markers = [
+    "live: talks to real cloud providers (needs API keys; skipped by default)",
+]
+addopts = "-m 'not live'"
+
+[tool.ruff]
+line-length = 110
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "ASYNC"]
+ignore = ["E501", "B008"]

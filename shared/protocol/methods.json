@@ -1,0 +1,865 @@
+{
+  "protocol": 1,
+  "description": "Nixin Link protocol method registry. Single source of truth for every PC->phone request. The PC validates params against these schemas before sending; the phone implements exactly these methods (a JVM test on the Android side and a pytest on the PC side both check against this file).",
+  "risks": {
+    "read": "Only reads state. Never changes anything.",
+    "nav": "Navigates or interacts with the UI inside the phone. Reversible.",
+    "local": "Changes a phone setting (volume, torch, alarm...). Local, reversible.",
+    "external": "Affects the outside world (message, call, SMS). Requires the confirmation gate on the PC and meta.confirmed=true on the phone."
+  },
+  "methods": {
+    "device.status": {
+      "risk": "read",
+      "summary": "Battery, volumes, ringer, torch, foreground app, lock state, permissions and stop state.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    "device.volume": {
+      "risk": "local",
+      "summary": "Change a volume stream.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "stream": {
+            "enum": [
+              "media",
+              "ring",
+              "alarm",
+              "notification",
+              "call"
+            ],
+            "default": "media"
+          },
+          "action": {
+            "enum": [
+              "up",
+              "down",
+              "set",
+              "mute",
+              "unmute",
+              "max"
+            ]
+          },
+          "percent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "steps": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 15
+          },
+          "showUi": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "device.torch": {
+      "risk": "local",
+      "summary": "Turn the flashlight on or off.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "on"
+        ],
+        "properties": {
+          "on": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "device.brightness": {
+      "risk": "local",
+      "summary": "Set screen brightness (needs 'Modify system settings').",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "enum": [
+              "set",
+              "up",
+              "down",
+              "auto"
+            ]
+          },
+          "percent": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          }
+        }
+      }
+    },
+    "device.ringer": {
+      "risk": "local",
+      "summary": "Ringer mode.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mode"
+        ],
+        "properties": {
+          "mode": {
+            "enum": [
+              "normal",
+              "vibrate",
+              "silent"
+            ]
+          }
+        }
+      }
+    },
+    "device.dnd": {
+      "risk": "local",
+      "summary": "Do Not Disturb on/off (needs DND access).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "on"
+        ],
+        "properties": {
+          "on": {
+            "type": "boolean"
+          }
+        }
+      }
+    },
+    "device.global": {
+      "risk": "nav",
+      "summary": "System navigation via AccessibilityService global actions.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "enum": [
+              "back",
+              "home",
+              "recents",
+              "notifications",
+              "quick_settings",
+              "lock_screen",
+              "screenshot",
+              "power_dialog",
+              "split_screen"
+            ]
+          }
+        }
+      }
+    },
+    "device.settings": {
+      "risk": "nav",
+      "summary": "Open a system settings screen or panel.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "panel"
+        ],
+        "properties": {
+          "panel": {
+            "enum": [
+              "main",
+              "wifi",
+              "bluetooth",
+              "internet",
+              "nfc",
+              "volume",
+              "display",
+              "battery",
+              "location",
+              "sound",
+              "apps",
+              "accessibility",
+              "notification_access",
+              "write_settings",
+              "dnd_access",
+              "hotspot",
+              "mobile_data",
+              "airplane"
+            ]
+          }
+        }
+      }
+    },
+    "app.list": {
+      "risk": "read",
+      "summary": "Launchable apps (label + package).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    "app.open": {
+      "risk": "nav",
+      "summary": "Open an app by package or (fuzzy) name.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "package": {
+            "type": "string",
+            "pattern": "^[A-Za-z][A-Za-z0-9_]*(\\.[A-Za-z0-9_]+)+$",
+            "maxLength": 200
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "package"
+            ]
+          },
+          {
+            "required": [
+              "name"
+            ]
+          }
+        ]
+      }
+    },
+    "app.current": {
+      "risk": "read",
+      "summary": "Foreground app.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    "intent.url": {
+      "risk": "nav",
+      "summary": "Open an http(s) URL.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string",
+            "pattern": "^https?://",
+            "maxLength": 2000
+          }
+        }
+      }
+    },
+    "intent.search": {
+      "risk": "nav",
+      "summary": "Search on the web, YouTube, Play Store, Maps or Spotify.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "query"
+        ],
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "engine": {
+            "enum": [
+              "web",
+              "youtube",
+              "playstore",
+              "maps",
+              "spotify"
+            ],
+            "default": "web"
+          }
+        }
+      }
+    },
+    "intent.navigate": {
+      "risk": "nav",
+      "summary": "Start Google Maps navigation.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "destination"
+        ],
+        "properties": {
+          "destination": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 300
+          },
+          "mode": {
+            "enum": [
+              "driving",
+              "walking",
+              "bicycling",
+              "transit"
+            ],
+            "default": "driving"
+          }
+        }
+      }
+    },
+    "intent.alarm": {
+      "risk": "local",
+      "summary": "Create an alarm (next occurrence of hour:minute, optional repeat days 1=Sunday..7=Saturday).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "hour",
+          "minute"
+        ],
+        "properties": {
+          "hour": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 23
+          },
+          "minute": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 59
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 7
+            },
+            "maxItems": 7,
+            "uniqueItems": true
+          },
+          "skipUi": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      }
+    },
+    "intent.timer": {
+      "risk": "local",
+      "summary": "Start a countdown timer.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "seconds"
+        ],
+        "properties": {
+          "seconds": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 86400
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "skipUi": {
+            "type": "boolean",
+            "default": true
+          }
+        }
+      }
+    },
+    "media.control": {
+      "risk": "local",
+      "summary": "Media keys for whatever is playing.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "action"
+        ],
+        "properties": {
+          "action": {
+            "enum": [
+              "play",
+              "pause",
+              "toggle",
+              "next",
+              "previous",
+              "stop"
+            ]
+          }
+        }
+      }
+    },
+    "contacts.search": {
+      "risk": "read",
+      "summary": "Find contacts by name (needs Contacts permission).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "query"
+        ],
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 10,
+            "default": 5
+          }
+        }
+      }
+    },
+    "comm.call": {
+      "risk": "external",
+      "summary": "Place a phone call (falls back to the dialer without CALL_PHONE permission).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "number"
+        ],
+        "properties": {
+          "number": {
+            "type": "string",
+            "pattern": "^\\+?[0-9 ()-]{3,20}$"
+          }
+        }
+      }
+    },
+    "comm.sms": {
+      "risk": "external",
+      "summary": "Send an SMS (falls back to the composer without SEND_SMS permission).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "number",
+          "text"
+        ],
+        "properties": {
+          "number": {
+            "type": "string",
+            "pattern": "^\\+?[0-9 ()-]{3,20}$"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1000
+          }
+        }
+      }
+    },
+    "comm.whatsapp": {
+      "risk": "external",
+      "summary": "Send a WhatsApp text to a number via click-to-chat, verify the composer, tap Send once and verify.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "number",
+          "text"
+        ],
+        "properties": {
+          "number": {
+            "type": "string",
+            "pattern": "^\\+?[0-9 ()-]{3,20}$"
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          },
+          "send": {
+            "type": "boolean",
+            "default": true
+          },
+          "business": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    "notif.list": {
+      "risk": "read",
+      "summary": "Recent notifications (OTP-like content masked, blocked apps excluded).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "package": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 20,
+            "default": 5
+          }
+        }
+      }
+    },
+    "ui.snapshot": {
+      "risk": "read",
+      "summary": "Compact accessibility tree of the current screen with snapshot-scoped element ids.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "maxElements": {
+            "type": "integer",
+            "minimum": 10,
+            "maximum": 300,
+            "default": 150
+          }
+        }
+      }
+    },
+    "ui.tap": {
+      "risk": "nav",
+      "summary": "Tap an element (by id from the latest snapshot) or a raw screen coordinate.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "snapshotId": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "elementId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "x": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "y": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "elementId"
+            ]
+          },
+          {
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        ]
+      }
+    },
+    "ui.long_press": {
+      "risk": "nav",
+      "summary": "Long-press an element or coordinate.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "snapshotId": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "elementId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "x": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "y": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "elementId"
+            ]
+          },
+          {
+            "required": [
+              "x",
+              "y"
+            ]
+          }
+        ]
+      }
+    },
+    "ui.type": {
+      "risk": "nav",
+      "summary": "Type into an editable element (or the focused one).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 4000
+          },
+          "snapshotId": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "elementId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "clear": {
+            "type": "boolean",
+            "default": true
+          },
+          "submit": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    "ui.scroll": {
+      "risk": "nav",
+      "summary": "Scroll the screen or a scrollable element. 'down' reveals content below.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "direction"
+        ],
+        "properties": {
+          "direction": {
+            "enum": [
+              "up",
+              "down",
+              "left",
+              "right"
+            ]
+          },
+          "snapshotId": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "elementId": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      }
+    },
+    "ui.swipe": {
+      "risk": "nav",
+      "summary": "Raw swipe gesture in screen pixels.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "x1",
+          "y1",
+          "x2",
+          "y2"
+        ],
+        "properties": {
+          "x1": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "y1": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "x2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "y2": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10000
+          },
+          "durationMs": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 3000,
+            "default": 300
+          }
+        }
+      }
+    },
+    "ui.key": {
+      "risk": "nav",
+      "summary": "Press a key: enter/search submits the focused field via the IME action.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "key"
+        ],
+        "properties": {
+          "key": {
+            "enum": [
+              "enter",
+              "back",
+              "home",
+              "recents"
+            ]
+          }
+        }
+      }
+    },
+    "ui.tap_text": {
+      "risk": "nav",
+      "summary": "Find a visible element by text/description and tap it.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "exact": {
+            "type": "boolean",
+            "default": false
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 20,
+            "default": 0
+          }
+        }
+      }
+    },
+    "ui.wait": {
+      "risk": "read",
+      "summary": "Wait until text appears (or disappears) and/or a package is in the foreground.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "package": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "gone": {
+            "type": "boolean",
+            "default": false
+          },
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 100,
+            "maximum": 20000,
+            "default": 5000
+          }
+        }
+      }
+    },
+    "screen.capture": {
+      "risk": "read",
+      "summary": "JPEG screenshot via AccessibilityService (needs the phone-side 'Allow screenshots' toggle).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "maxWidth": {
+            "type": "integer",
+            "minimum": 240,
+            "maximum": 1440,
+            "default": 720
+          },
+          "quality": {
+            "type": "integer",
+            "minimum": 30,
+            "maximum": 95,
+            "default": 60
+          }
+        }
+      }
+    }
+  },
+  "errors": {
+    "bad_request": "Params failed validation.",
+    "unknown_method": "Phone does not implement this method.",
+    "internal": "Unexpected error on the phone.",
+    "timeout": "The action did not finish in time.",
+    "cancelled": "Cancelled by the user or the PC.",
+    "device.offline": "Phone is not connected.",
+    "device.locked": "Phone is locked; unlock it first.",
+    "device.unsupported": "Not supported on this device/Android version.",
+    "policy.stopped": "Kill switch is active. Resume from the phone.",
+    "policy.blocked_app": "The app is on the blocklist (banking/UPI/passwords/OTP...).",
+    "policy.sensitive_field": "Refusing to read or type into a password/OTP field.",
+    "policy.confirmation_required": "This action affects other people and needs confirmation.",
+    "policy.screenshots_disabled": "Screenshots are disabled in the phone app settings.",
+    "permission.accessibility": "Enable Nixin in Accessibility settings.",
+    "permission.notifications": "Grant Nixin notification access.",
+    "permission.contacts": "Grant Contacts permission.",
+    "permission.call": "Grant Phone permission.",
+    "permission.sms": "Grant SMS permission.",
+    "permission.write_settings": "Allow Nixin to modify system settings.",
+    "permission.dnd": "Grant Do Not Disturb access.",
+    "target.stale": "Screen changed; take a new snapshot.",
+    "target.not_found": "Element/contact/app not found.",
+    "target.not_editable": "Element is not a text field.",
+    "target.not_scrollable": "Nothing to scroll.",
+    "app.not_installed": "App is not installed.",
+    "action.failed": "Android refused or failed the action.",
+    "action.uncertain": "The action may have happened but could not be verified. Never retried automatically."
+  }
+}

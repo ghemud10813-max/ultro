@@ -1,0 +1,47 @@
+# ---- secrets & runtime data (never commit) ----
+.env
+*.env.local
+nixin.toml
+!brain/nixin.example.toml
+data/
+*.db
+*.db-journal
+*.sqlite
+*.pem
+*.key
+*.p12
+*.jks
+*.keystore
+recordings/
+screenshots/
+
+# ---- python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+dist/
+build/
+
+# ---- android / gradle ----
+.gradle/
+**/build/
+local.properties
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+
+# ---- os / editors ----
+.DS_Store
+Thumbs.db
+.vscode/
