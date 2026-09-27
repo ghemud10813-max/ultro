@@ -306,6 +306,7 @@ class LinkClient(private val scope: CoroutineScope, private val dispatcher: Disp
                 Nixin.showAskNotification(ask)
                 if (Nixin.settings.speakReplies.value) Nixin.speaker.speak(ask.text)
             }
+            "echo" -> m.str("text")?.let { AppState.addChat(AppState.ChatMessage(true, it)) }
             "cancel" -> {
                 dispatcher.cancelTask(m.str("taskId"))
                 AppState.setBusy(false)

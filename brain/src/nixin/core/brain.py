@@ -114,6 +114,9 @@ class Brain:
         self.memory.add_turn("user", ctx.text, ctx.task_id)
         self.bus.emit("user", text=ctx.text, source=ctx.source, taskId=ctx.task_id)
         self.bus.emit("task", taskId=ctx.task_id, status="running", text=ctx.text, source=ctx.source)
+        if not ctx.via_phone:
+            # keep the phone app's chat in sync with commands given on the PC
+            await self.phone.send_message({"t": "echo", "text": ctx.text, "source": ctx.source, "taskId": ctx.task_id})
         outcomes: list[Outcome] = []
         route_kind = "router"
         try:

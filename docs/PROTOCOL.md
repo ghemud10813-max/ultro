@@ -38,6 +38,7 @@ A fresh nonce per connection means a recorded handshake can't be replayed. A new
 | `res` | phone → PC | `id, ok, result` or `id, ok:false, error{code,message}` | reply |
 | `cmd` | phone → PC | `id, text, source: phone_text\|phone_voice` | you typed/spoke on the phone |
 | `say` | PC → phone | `text, speak, taskId` | Nixin's reply (shown in chat, spoken if `speak`) |
+| `echo` | PC → phone | `text, source, taskId` | a command you gave on the PC, mirrored into the phone chat |
 | `ask` | PC → phone | `id, kind: confirm\|choose\|input, text, options[], timeoutSec` | question for you |
 | `answer` | phone → PC | `id, value` | your answer ("yes"/"no"/option/text) |
 | `cancel` | PC → phone | `taskId, reason` | abort in-flight work of a task |
