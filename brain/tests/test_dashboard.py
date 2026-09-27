@@ -78,6 +78,6 @@ async def test_websocket_streams_events(running):
 async def test_websocket_rejects_foreign_origin(running):
     app, base = running
     url = base.replace("http", "ws") + f"/ws?token={app.dashboard_token}"
-    with pytest.raises(Exception):
+    with pytest.raises((websockets.InvalidStatus, websockets.ConnectionClosed, TimeoutError)):
         async with websockets.connect(url, origin="https://evil.example") as ws:
             await asyncio.wait_for(ws.recv(), 3)

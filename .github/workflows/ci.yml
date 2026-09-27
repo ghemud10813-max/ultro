@@ -17,7 +17,7 @@ jobs:
       run:
         working-directory: brain
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: astral-sh/setup-uv@v6
       - name: Install
         run: |
@@ -35,15 +35,18 @@ jobs:
       run:
         working-directory: android
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
       - uses: gradle/actions/setup-gradle@v4
-      - name: Install SDK platform
-        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" > /dev/null
+      - name: Install SDK platform (runner already ships the Android SDK)
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          [ -x "$SDKM" ] || SDKM="$(ls -d $ANDROID_HOME/cmdline-tools/*/bin/sdkmanager | tail -1)"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platforms;android-36" "build-tools;36.0.0" > /dev/null
       - name: Build debug APK + unit tests
         run: ./gradlew --no-daemon assembleDebug testDebugUnitTest
       - name: Lint
