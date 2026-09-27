@@ -1,3 +1,8 @@
 <resources>
-    <string name="app_name">nixin</string>
+    <string name="app_name">Nixin</string>
+    <string name="accessibility_label">Nixin phone control</string>
+    <string name="accessibility_description">Lets Nixin (running on your own PC) read the screen and tap, type and scroll for you when you ask it to. Nixin never touches banking, UPI, password or OTP apps, never reads password fields, and stops instantly from the notification. Nothing is sent anywhere except your paired PC.</string>
+    <string name="tile_label">Nixin</string>
+    <string name="channel_link">Nixin connection</string>
+    <string name="channel_ask">Nixin questions</string>
 </resources>

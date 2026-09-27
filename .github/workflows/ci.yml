@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  brain:
+    name: PC brain (Python)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: brain
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - name: Install
+        run: |
+          uv venv --python 3.12
+          uv pip install -e ".[dev]"
+      - name: Lint
+        run: uv run ruff check src tests
+      - name: Tests
+        run: uv run pytest -q
+
+  android:
+    name: Android app (APK)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install SDK platform
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0" > /dev/null
+      - name: Build debug APK + unit tests
+        run: ./gradlew --no-daemon assembleDebug testDebugUnitTest
+      - name: Lint
+        run: ./gradlew --no-daemon lintDebug
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: nixin-debug-apk
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-reports
+          path: |
+            android/app/build/reports/
+          if-no-files-found: ignore
