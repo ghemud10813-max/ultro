@@ -56,7 +56,7 @@ class VoiceActivity : ComponentActivity() {
                         onResult = { text ->
                             status = "“$text”"
                             if (!Nixin.link.sendCommand(text, "phone_voice")) status = "PC se connected nahi hai"
-                            sentAt.value = AppState.chat.value.size
+                            sentAt.intValue = AppState.chat.value.size
                             done = true
                         },
                         onError = { status = it; done = true },
@@ -70,7 +70,7 @@ class VoiceActivity : ComponentActivity() {
                     if (done) {
                         // show Nixin's reply briefly, then close
                         val reply = chat.lastOrNull()?.takeIf { !it.fromUser }
-                        if (reply != null && chat.size > sentAt.value) status = reply.text
+                        if (reply != null && chat.size > sentAt.intValue) status = reply.text
                         delay(if (reply != null) 3500 else 6000)
                         finish()
                     }

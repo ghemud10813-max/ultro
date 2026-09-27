@@ -1,5 +1,6 @@
 package com.letvler.nixin.service
 
+import android.annotation.SuppressLint
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
@@ -20,6 +21,7 @@ class NixinTileService : TileService() {
         }
     }
 
+    @SuppressLint("StartActivityAndCollapseDeprecated") // the Intent overload is only used below API 34
     override fun onClick() {
         super.onClick()
         val intent = Intent(this, VoiceActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

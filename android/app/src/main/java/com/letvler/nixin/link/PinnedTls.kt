@@ -1,5 +1,6 @@
 package com.letvler.nixin.link
 
+import android.annotation.SuppressLint
 import okhttp3.OkHttpClient
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -13,6 +14,7 @@ import javax.net.ssl.X509TrustManager
  * Trusts exactly one certificate: the PC's self-signed cert whose SHA-256 fingerprint
  * came from the pairing QR. No CA, no domain, no man-in-the-middle on the LAN.
  */
+@SuppressLint("CustomX509TrustManager") // this IS the certificate pinning; it rejects everything but one cert
 class PinnedTrustManager(private val pinHex: String) : X509TrustManager {
     override fun checkServerTrusted(chain: Array<out X509Certificate>?, authType: String?) {
         val leaf = chain?.firstOrNull() ?: throw CertificateException("No certificate")

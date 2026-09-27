@@ -4,6 +4,7 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -95,7 +96,7 @@ fun SetupScreen() {
         when (key) {
             "accessibility" -> open(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             "batteryUnrestricted" -> open(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:${ctx.packageName}")))
-            "postNotifications" -> runtime.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
+            "postNotifications" -> if (Build.VERSION.SDK_INT >= 33) runtime.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
             "notifications" -> open(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
             "contacts" -> runtime.launch(arrayOf(Manifest.permission.READ_CONTACTS))
             "call" -> runtime.launch(arrayOf(Manifest.permission.CALL_PHONE))

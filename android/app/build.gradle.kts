@@ -38,10 +38,10 @@ android {
         unitTests.isReturnDefaultValues = true
     }
     lint {
-        abortOnError = false
+        abortOnError = true  // CI fails on real lint errors
         checkReleaseBuilds = false
         textReport = true
-        disable += setOf("GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion", "ObsoleteLintCustomCheck")
+        disable += setOf("GradleDependency", "NewerVersionAvailable", "AndroidGradlePluginVersion", "ObsoleteLintCustomCheck", "UseKtx")
     }
     packaging {
         resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1", "META-INF/*.kotlin_module")

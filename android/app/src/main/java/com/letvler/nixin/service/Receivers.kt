@@ -38,6 +38,7 @@ class ActionReceiver : BroadcastReceiver() {
 /** Reconnect to the PC after reboot / app update (if paired and auto-start is on). */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action != Intent.ACTION_BOOT_COMPLETED && intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         if (Nixin.settings.autoStart.value && Nixin.settings.paired.value != null) {
             runCatching { Nixin.startService(context) }
         }

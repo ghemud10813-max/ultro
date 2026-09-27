@@ -1,5 +1,6 @@
 package com.letvler.nixin
 
+import android.annotation.SuppressLint
 import android.app.Application
 import android.app.Notification
 import android.app.NotificationChannel
@@ -25,7 +26,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import java.util.concurrent.ConcurrentHashMap
 
-/** Process-wide singletons (a tiny service locator; no DI framework needed). */
+/** Process-wide singletons (a tiny service locator; no DI framework needed). They hold only the Application context. */
+@SuppressLint("StaticFieldLeak")
 object Nixin {
     lateinit var app: Application
         private set

@@ -74,6 +74,7 @@ class Settings(context: Context) {
     }
 
     fun setStopped(v: Boolean) {
+        @Suppress("ApplySharedPref")
         prefs.edit().putBoolean("stopped", v).commit() // commit: must survive an immediate process death
         _stopped.value = v
     }
