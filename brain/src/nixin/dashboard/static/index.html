@@ -17,6 +17,10 @@
   </div>
   <nav class="tabs" role="tablist">
     <button class="tab active" data-tab="console">Console</button>
+    <button class="tab" data-tab="automations">Automations</button>
+    <button class="tab" data-tab="notifications">Notifications <span id="notifCount" class="count hidden"></span></button>
+    <button class="tab" data-tab="files">Files</button>
+    <button class="tab" data-tab="phone">Phone &amp; PC</button>
     <button class="tab" data-tab="tasks">Tasks</button>
     <button class="tab" data-tab="memory">Memory</button>
     <button class="tab" data-tab="models">Models</button>
@@ -60,6 +64,118 @@
           <button data-global="notifications" title="Notifications">🔔</button>
         </div>
         <div id="phoneStatus" class="status"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Automations ================= -->
+  <section class="view" id="view-automations">
+    <div id="recBanner" class="banner hidden"></div>
+    <div class="cards">
+      <div class="card span2">
+        <div class="rowspace"><h3>Routines &amp; reminders</h3><button id="newRoutineBtn" class="primary">New routine</button></div>
+        <p class="muted small">Say it too: “har raat 11 baje phone silent kar dena”, “jab battery 20% se kam ho to bata dena”,
+          “10 minute baad yaad dilana ki chai”. <b>Trusted</b> routines may send messages/calls without asking.</p>
+        <form id="routineForm" class="routineform hidden">
+          <input type="hidden" name="id">
+          <div class="row"><input name="name" placeholder="Name (e.g. Night mode)" required>
+            <select name="type"><option value="time">At a time</option><option value="event">When something happens</option>
+              <option value="phrase">When I say…</option><option value="interval">Every N minutes</option><option value="once">Once</option></select></div>
+          <div class="row trig trig-time trig-once"><label>Time <input type="time" name="at" value="23:00"></label>
+            <span class="days trig trig-time" id="dayBoxes"></span>
+            <label class="trig trig-once">Date <input type="date" name="date"></label></div>
+          <div class="row trig trig-event"><select name="event"></select>
+            <input name="below" type="number" min="1" max="100" placeholder="below %">
+            <input name="contains" placeholder="from / contains (e.g. Mummy)"><input name="app" placeholder="app (e.g. whatsapp)"></div>
+          <div class="row trig trig-phrase"><input name="phrases" placeholder="phrases, comma separated (good night, so raha hoon)"></div>
+          <div class="row trig trig-interval"><input name="minutes" type="number" min="1" placeholder="minutes"></div>
+          <textarea name="actions" rows="4" placeholder="One action per line — any Nixin command, or
+say: text to speak
+notify: text for a notification
+wait: 5"></textarea>
+          <div class="row"><label class="switch"><input type="checkbox" name="trusted"><span>Trusted (no confirmation for messages/calls)</span></label>
+            <label>Cooldown (min) <input name="cooldown_minutes" type="number" min="0" step="0.5" value="1" style="width:80px"></label>
+            <span class="grow"></span><button type="button" id="cancelRoutine">Cancel</button><button class="primary">Save routine</button></div>
+        </form>
+        <table id="routineTable"></table>
+      </div>
+      <div class="card">
+        <div class="rowspace"><h3>Skills (teach mode)</h3>
+          <label class="switch" title="Replay routes the agent learned instead of calling the LLM again"><input type="checkbox" id="autoReplay"><span>Auto-replay learned routes</span></label></div>
+        <p class="muted small">Say <b>“sikho: chai order”</b>, do it on the phone, then <b>“save karo”</b>. Later: <b>“chai order chalao”</b>
+          (or “chai order: masala chai” to type something different).</p>
+        <div id="skillList"></div>
+      </div>
+      <div class="card">
+        <div class="rowspace"><h3>Plugins</h3><button id="reloadPlugins">Reload</button></div>
+        <div id="pluginList" class="small"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Notifications ================= -->
+  <section class="view" id="view-notifications">
+    <div class="cards">
+      <div class="card span2">
+        <div class="rowspace"><h3>Phone notifications</h3><div><button id="refreshNotifs">Refresh</button> <button id="clearNotifs">Clear all</button></div></div>
+        <p class="muted small">Live feed needs <b>Mirror notifications</b> on in the phone app. Reply goes through the notification's own
+          reply button (WhatsApp, Telegram, SMS…). OTP-like text is masked on the phone.</p>
+        <div id="notifList" class="notiflist"></div>
+      </div>
+      <div class="card">
+        <h3>Announcements</h3>
+        <div class="settings" id="notifSettings">
+          <label>Speak VIP messages</label><div><input type="checkbox" data-n="notifications.announce"></div>
+          <label>Desktop notifications on the PC</label><div><input type="checkbox" data-n="notifications.toast_on_pc"></div>
+          <label>VIP people</label><div><input data-n="notifications.vip" placeholder="Mummy, Papa, Boss"></div>
+          <label>Always announce apps</label><div><input data-n="notifications.announce_apps" placeholder="whatsapp, gmail"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Files ================= -->
+  <section class="view" id="view-files">
+    <div class="cards">
+      <div class="card">
+        <h3>Send to phone</h3>
+        <label class="drop" id="dropPhone"><input type="file" id="filePhone" multiple hidden>
+          <b>Drop files here</b><span class="muted small">or click — they land in Downloads/Nixin on the phone</span></label>
+        <label class="drop" id="dropWall"><input type="file" id="fileWall" accept="image/*" hidden>
+          <b>Set phone wallpaper</b><span class="muted small">drop or pick an image</span></label>
+        <div class="row"><textarea id="clipText" rows="2" placeholder="Text for the phone clipboard"></textarea>
+          <button id="clipSend" class="primary">Copy to phone</button></div>
+        <div id="transfer" class="muted small"></div>
+      </div>
+      <div class="card span2">
+        <div class="rowspace"><h3>From your phone</h3><span class="muted small" id="inboxFolder"></span></div>
+        <p class="muted small">On the phone: Share → <b>Nixin</b> on any text, link, photo or file.</p>
+        <div id="inboxList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= Phone & PC ================= -->
+  <section class="view" id="view-phone">
+    <div class="cards">
+      <div class="card">
+        <h3>Find my phone</h3>
+        <div class="row"><button id="ringBtn" class="primary">Ring (even on silent)</button><button id="stopRingBtn">Stop</button>
+          <button id="locateBtn">Where is it?</button></div>
+        <div id="locateOut" class="muted small"></div>
+        <h3 style="margin-top:14px">Now playing</h3>
+        <div id="playing" class="muted">–</div>
+      </div>
+      <div class="card">
+        <div class="rowspace"><h3>Screen time</h3>
+          <select id="usagePeriod"><option value="today">Today</option><option value="yesterday">Yesterday</option><option value="week">This week</option></select></div>
+        <div id="usage"></div>
+      </div>
+      <div class="card">
+        <h3>Device</h3>
+        <div id="deviceInfo" class="status"></div>
+        <h3 style="margin-top:14px">This PC</h3>
+        <div id="pcInfo" class="status"></div>
       </div>
     </div>
   </section>

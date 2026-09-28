@@ -37,6 +37,15 @@ RUNTIME_SETTINGS = {
     "assistant.max_agent_steps": int,
     "assistant.default_message_channel": str,
     "voice.wake_word": bool,
+    "voice.follow_up_seconds": float,
+    "assistant.city": str,
+    "assistant.announce_on": str,
+    "notifications.announce": bool,
+    "notifications.toast_on_pc": bool,
+    "notifications.vip": list,
+    "notifications.announce_apps": list,
+    "bridge.clipboard_on_share": bool,
+    "bridge.open_links": bool,
 }
 
 
@@ -48,7 +57,11 @@ def apply_setting(cfg: NixinConfig, key: str, value: Any) -> None:
     typ = RUNTIME_SETTINGS[key]
     # validate through pydantic by rebuilding the section
     data = obj.model_dump()
-    data[name] = typ(value)
+    if typ is list:
+        items = value.split(",") if isinstance(value, str) else list(value)
+        data[name] = [str(v).strip() for v in items if str(v).strip()]
+    else:
+        data[name] = typ(value)
     setattr(cfg, section, type(obj).model_validate(data))
 
 

@@ -7,7 +7,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 const time = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 
 let ws = null;
-let state = { snapshot: null, frame: null, ask: null };
+let state = { snapshot: null, frame: null, ask: null, tab: "console", notifs: [] };
 
 async function api(path, opts = {}) {
   const r = await fetch(path, { credentials: "same-origin", headers: { "Content-Type": "application/json" }, ...opts });
@@ -21,7 +21,9 @@ function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj))
 $$(".tab").forEach((b) => b.addEventListener("click", () => {
   $$(".tab").forEach((x) => x.classList.toggle("active", x === b));
   $$(".view").forEach((v) => v.classList.toggle("active", v.id === "view-" + b.dataset.tab));
-  ({ tasks: loadTasks, memory: loadMemory, models: loadModels, settings: loadSettings, pair: loadDevices })[b.dataset.tab]?.();
+  state.tab = b.dataset.tab;
+  ({ tasks: loadTasks, memory: loadMemory, models: loadModels, settings: loadSettings, pair: loadDevices,
+     automations: loadAutomations, notifications: loadNotifs, files: loadFiles, phone: loadPhone })[b.dataset.tab]?.();
 }));
 
 // ------------------------------------------------------------------ chat
@@ -43,8 +45,9 @@ $("#cmdForm").addEventListener("submit", (e) => {
 });
 $("#micBtn").addEventListener("click", () => send({ type: "ptt" }));
 $("#stopBtn").addEventListener("click", () => send({ type: "cancel" }));
-const EXAMPLES = ["volume badha do", "torch on karo", "WhatsApp kholo", "battery kitni hai", "meri latest notification padh ke bata",
-  "kal subah 6 baje ka alarm laga do", "youtube pe lofi songs chalao", "Instagram pe latest post like karo"];
+const EXAMPLES = ["volume badha do", "torch on karo", "briefing do", "mera phone kahan hai", "mere messages summarize karo",
+  "har raat 11 baje phone silent kar dena", "10 minute baad yaad dilana ki chai", "PC ka screenshot bhejo", "screen pe kya hai",
+  "kal barish hogi?", "aaj maine phone kitna chalaya", "youtube pe lofi songs chalao", "Instagram pe latest post like karo"];
 $("#chips").innerHTML = EXAMPLES.map((e) => `<button type="button">${esc(e)}</button>`).join("");
 $$("#chips button").forEach((b) => b.addEventListener("click", () => { $("#cmd").value = b.textContent; $("#cmd").focus(); }));
 
@@ -99,6 +102,17 @@ function onEvent(ev, replay = false) {
     case "frame": showFrame(ev); break;
     case "frame_error": $("#mirrorHint").innerHTML = `Mirror unavailable: <b>${esc(ev.code)}</b><br><small>${esc(ev.message)}</small>`; break;
     case "settings": break;
+    case "routine": if (ev.status !== "running") tl(ev.status === "done" ? "verify" : "bad", `⏰ routine <b>${esc(ev.name)}</b> ${esc(ev.status)} <span class="muted">(${esc(ev.reason)})</span>`); break;
+    case "routines_changed": case "skills_changed": if (state.tab === "automations" && !replay) loadAutomations(); break;
+    case "recording": showRecording(ev.on ? ev.name : null); if (!replay) tl("plan", ev.on ? `🔴 teach mode: recording <b>${esc(ev.name)}</b>` : "⏹ teach mode stopped"); break;
+    case "skill_step": tl("act", `🧩 ${esc(ev.skill)} ${ev.n}/${ev.total}: ${esc(ev.step)}`); break;
+    case "notification": onNotification(ev.notification, replay); break;
+    case "notification_removed": if (state.tab === "notifications" && !replay) loadNotifs(); break;
+    case "inbox": tl("verify", `📥 from phone: ${esc(ev.item.kind === "file" ? ev.item.name : (ev.item.text || "").slice(0, 80))}`); if (state.tab === "files" && !replay) loadFiles(); break;
+    case "transfer": $("#transfer").textContent = `Sending ${ev.name}: ${ev.index}/${ev.total}`; break;
+    case "notify": tl("", `🔔 ${esc(ev.title)}: ${esc(ev.text)}`); break;
+    case "phone_location": tl("", `📍 phone at <a href="${esc(ev.link)}" target="_blank" rel="noopener">${ev.lat.toFixed(5)}, ${ev.lon.toFixed(5)}</a>`); break;
+    case "device_event": if (!replay && ["battery", "power", "call_incoming"].includes(ev.name)) tl("", `📱 ${esc(ev.name)} <span class="muted">${esc(JSON.stringify(ev.data))}</span>`); break;
   }
 }
 function agentEvent(ev) {
@@ -243,6 +257,11 @@ const SETTING_META = {
   "assistant.verify_finish": ["Verify agent results with the verifier model", "bool"],
   "assistant.max_agent_steps": ["Max agent steps per task", "int"],
   "voice.wake_word": ["Wake word (needs restart)", "bool"],
+  "voice.follow_up_seconds": ["Listen for a follow-up after Nixin asks something (seconds, 0 = off)", "float"],
+  "assistant.city": ["City for weather & briefing (empty = phone location)", "text"],
+  "assistant.announce_on": ["Speak routine alerts on", ["both", "pc", "phone"]],
+  "bridge.clipboard_on_share": ["Text shared from the phone goes to the PC clipboard", "bool"],
+  "bridge.open_links": ["Links shared from the phone open in the PC browser", "bool"],
 };
 async function loadSettings() {
   const s = await api("/api/settings");
@@ -251,6 +270,8 @@ async function loadSettings() {
     let input;
     if (type === "bool") input = `<input type="checkbox" data-k="${k}" ${v ? "checked" : ""}>`;
     else if (type === "int") input = `<input type="number" min="3" max="40" data-k="${k}" value="${esc(v)}">`;
+    else if (type === "float") input = `<input type="number" min="0" max="15" step="0.5" data-k="${k}" value="${esc(v)}">`;
+    else if (type === "text") input = `<input data-k="${k}" value="${esc(v)}">`;
     else input = `<select data-k="${k}">${type.map((o) => `<option ${o === v ? "selected" : ""}>${o}</option>`).join("")}</select>`;
     return `<label for="">${esc(label)}</label><div>${input}</div>`;
   }).join("");
@@ -276,6 +297,231 @@ async function loadDevices() {
      <td>${x.revoked ? "" : `<button data-unpair="${esc(x.device_id)}">Unpair</button>`}</td></tr>`).join("");
   $$("[data-unpair]").forEach((b) => b.onclick = async () => { if (confirm("Unpair this phone?")) { await api("/api/devices/" + b.dataset.unpair, { method: "DELETE" }); loadDevices(); } });
 }
+
+// ================================================================== v2: automations
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+$("#dayBoxes").innerHTML = DAYS.map((d, i) => `<label><input type="checkbox" name="day" value="${i + 1}"> ${d}</label>`).join("");
+function describeTrigger(t) {
+  switch (t.type) {
+    case "time": return `⏰ ${t.at}` + (t.days?.length ? " · " + t.days.map((d) => DAYS[d - 1]).join(",") : " · daily");
+    case "interval": return `🔁 every ${t.minutes} min`;
+    case "once": return `📌 ${new Date(t.when * 1000).toLocaleString()}`;
+    case "phrase": return "🗣 " + t.phrases.map((p) => `“${p}”`).join(" / ");
+    default: return `⚡ ${t.event}` + (t.below != null ? ` < ${t.below}%` : "") + (t.contains ? ` · “${t.contains}”` : "") + (t.app ? ` · ${t.app}` : "");
+  }
+}
+async function loadAutomations() {
+  const [r, sk, pl] = await Promise.all([api("/api/routines"), api("/api/skills"), api("/api/plugins")]);
+  state.routines = r.routines;
+  $("select[name=event]").innerHTML = r.events.map((e) => `<option>${esc(e)}</option>`).join("");
+  $("#routineTable").innerHTML = `<tr><th>Routine</th><th>When</th><th>Does</th><th>Runs</th><th></th></tr>` + r.routines.map((x) => `
+    <tr><td><b>${esc(x.name)}</b><br><span class="tag ${x.enabled ? "on" : ""}">${x.enabled ? "on" : "off"}</span>
+      ${x.trusted ? '<span class="tag trusted">trusted</span>' : ""}${x.builtin ? '<span class="tag">built-in</span>' : ""}</td>
+      <td>${esc(describeTrigger(x.trigger))}</td><td class="acts">${esc(x.actions.join("\n"))}</td>
+      <td>${x.runs}${x.last_run ? `<br><span class="muted small">${new Date(x.last_run * 1000).toLocaleString()}</span>` : ""}</td>
+      <td style="white-space:nowrap"><button data-run="${x.id}" title="Run now">▶</button>
+        <button data-toggle="${x.id}">${x.enabled ? "Disable" : "Enable"}</button>
+        <button data-edit="${x.id}">Edit</button><button data-delr="${x.id}">✕</button></td></tr>`).join("");
+  $$("[data-run]").forEach((b) => b.onclick = () => api(`/api/routines/${b.dataset.run}/run`, { method: "POST" }));
+  $$("[data-toggle]").forEach((b) => b.onclick = async () => {
+    const x = state.routines.find((y) => y.id === b.dataset.toggle);
+    await api("/api/routines", { method: "POST", body: JSON.stringify({ ...x, enabled: !x.enabled }) }); loadAutomations();
+  });
+  $$("[data-edit]").forEach((b) => b.onclick = () => editRoutine(state.routines.find((y) => y.id === b.dataset.edit)));
+  $$("[data-delr]").forEach((b) => b.onclick = async () => { if (confirm("Delete this routine?")) { await api("/api/routines/" + b.dataset.delr, { method: "DELETE" }); loadAutomations(); } });
+
+  $("#autoReplay").checked = sk.autoReplay;
+  showRecording(sk.recording?.name || null);
+  $("#skillList").innerHTML = sk.skills.map((x) => `<div class="skill">
+      <div class="rowspace"><div><b>${esc(x.name)}</b> <span class="tag">${x.kind === "auto" ? "learned route" : "taught"}</span>
+        <span class="muted small">${x.steps.length} steps · ${x.runs} runs${x.fails ? ` · ${x.fails} failed` : ""}</span></div>
+        <div><button data-runs="${x.id}">▶</button> <button data-dels="${x.id}">✕</button></div></div>
+      <details><summary class="muted small">steps</summary><ol>${x.steps.map((st) => `<li>${esc(stepText(st))}</li>`).join("")}</ol></details></div>`).join("")
+    || `<p class="muted">No skills yet.</p>`;
+  $$("[data-runs]").forEach((b) => b.onclick = () => api(`/api/skills/${b.dataset.runs}/run`, { method: "POST" }));
+  $$("[data-dels]").forEach((b) => b.onclick = async () => { await api("/api/skills/" + b.dataset.dels, { method: "DELETE" }); loadAutomations(); });
+
+  $("#pluginList").innerHTML = (pl.plugins.length ? `<table><tr><th>Command</th><th>Pattern</th></tr>` + pl.plugins.map((p) =>
+    `<tr><td><b>${esc(p.name)}</b><br><span class="muted">${esc(p.description)}</span></td><td><code>${esc(p.pattern)}</code></td></tr>`).join("") + "</table>"
+    : `<p class="muted">No plugins. Drop a .py file into <code>${esc(pl.dirs[0])}</code> — see docs/PLUGINS.md.</p>`)
+    + Object.entries(pl.errors).map(([f, e]) => `<p class="bad">⚠ ${esc(f)}</p><pre class="acts">${esc(e)}</pre>`).join("");
+}
+function stepText(s) {
+  return { open: `open ${s.label || s.package}`, tap: `tap “${s.text || s.desc || s.res || "?"}”`, type: `type “${s.text}”`,
+    scroll: `scroll ${s.dir || "down"}`, find: `scroll to “${s.text}”`, key: `press ${s.key}`, wait: `wait ${s.seconds}s` }[s.a] || s.a;
+}
+function showRecording(name) {
+  const b = $("#recBanner");
+  if (!name) { b.classList.add("hidden"); return; }
+  b.innerHTML = `🔴 <b>Teach mode:</b> recording “${esc(name)}” — do it on the phone, then <button class="primary" id="recSave">Save</button>`;
+  b.classList.remove("hidden");
+  $("#recSave").onclick = () => api("/api/phone/teach_stop", { method: "POST" }).then(loadAutomations);
+}
+$("#autoReplay").addEventListener("change", (e) => api("/api/skills/auto_replay", { method: "POST", body: JSON.stringify({ on: e.target.checked }) }));
+$("#reloadPlugins").addEventListener("click", () => api("/api/plugins/reload", { method: "POST" }).then(loadAutomations));
+function showTrigFields() {
+  const t = $("select[name=type]").value;
+  $$(".routineform .trig").forEach((el) => el.classList.toggle("hidden", !el.classList.contains("trig-" + t)));
+}
+$("select[name=type]").addEventListener("change", showTrigFields);
+$("#newRoutineBtn").addEventListener("click", () => editRoutine(null));
+$("#cancelRoutine").addEventListener("click", () => $("#routineForm").classList.add("hidden"));
+const F = (n) => $("#routineForm").elements.namedItem(n);
+function editRoutine(x) {
+  const f = $("#routineForm");
+  f.reset();
+  F("id").value = x?.id || "";
+  if (x) {
+    const t = x.trigger;
+    F("name").value = x.name; F("type").value = t.type; F("at").value = t.at || "23:00";
+    F("event").value = t.event || "battery_low"; F("below").value = t.below ?? ""; F("contains").value = t.contains || ""; F("app").value = t.app || "";
+    F("phrases").value = (t.phrases || []).join(", "); F("minutes").value = t.minutes || "";
+    if (t.when) { const d = new Date(t.when * 1000); F("date").value = d.toISOString().slice(0, 10); F("at").value = d.toTimeString().slice(0, 5); }
+    $$("input[name=day]", f).forEach((c) => c.checked = (t.days || []).includes(Number(c.value)));
+    F("actions").value = x.actions.join("\n"); F("trusted").checked = x.trusted; F("cooldown_minutes").value = x.cooldown_minutes;
+  }
+  showTrigFields();
+  f.classList.remove("hidden");
+  F("name").focus();
+}
+$("#routineForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const f = e.target, type = F("type").value;
+  const trigger = { type };
+  if (type === "time") { trigger.at = F("at").value; trigger.days = $$("input[name=day]:checked", f).map((c) => Number(c.value)); }
+  if (type === "once") trigger.when = new Date(`${F("date").value || new Date().toISOString().slice(0, 10)}T${F("at").value}`).getTime() / 1000;
+  if (type === "event") { trigger.event = F("event").value; if (F("below").value) trigger.below = Number(F("below").value);
+    if (F("contains").value) trigger.contains = F("contains").value; if (F("app").value) trigger.app = F("app").value; }
+  if (type === "phrase") trigger.phrases = F("phrases").value.split(",").map((p) => p.trim()).filter(Boolean);
+  if (type === "interval") trigger.minutes = Number(F("minutes").value || 60);
+  const old = state.routines.find((y) => y.id === F("id").value) || {};
+  const body = { ...old, name: F("name").value, trigger, actions: F("actions").value.split("\n").map((a) => a.trim()).filter(Boolean),
+    trusted: F("trusted").checked, cooldown_minutes: Number(F("cooldown_minutes").value || 0) };
+  if (!F("id").value) delete body.id;
+  try { await api("/api/routines", { method: "POST", body: JSON.stringify(body) }); f.classList.add("hidden"); loadAutomations(); }
+  catch (err) { alert(err.message); }
+});
+
+// ================================================================== v2: notifications
+function onNotification(n, replay) {
+  if (!replay) {
+    tl("", `🔔 <b>${esc(n.app || n.package)}</b> ${esc(n.title)}: ${esc(n.text)}`);
+    state.notifs = [n, ...state.notifs.filter((x) => x.key !== n.key)].slice(0, 60);
+    const c = $("#notifCount"); c.textContent = state.notifs.length; c.classList.remove("hidden");
+    if (state.tab === "notifications") renderNotifs();
+  }
+}
+async function loadNotifs() {
+  const r = await api("/api/notifications");
+  state.notifs = r.items;
+  for (const [k, v] of Object.entries(r.settings)) {
+    const el = $(`[data-n="notifications.${k}"]`);
+    if (!el) continue;
+    if (el.type === "checkbox") el.checked = v; else el.value = Array.isArray(v) ? v.join(", ") : v;
+  }
+  renderNotifs();
+}
+function renderNotifs() {
+  $("#notifCount").classList.add("hidden");
+  $("#notifList").innerHTML = state.notifs.map((n) => `<div class="notif" data-key="${esc(n.key)}">
+      <div class="head"><span class="app">${esc(n.app || n.package)}</span><b>${esc(n.title)}</b>
+        <span class="muted small">${n.time ? new Date(n.time).toLocaleTimeString() : ""}</span></div>
+      <div class="body">${esc(n.text)}</div>
+      <div class="acts2">${n.canReply ? `<input placeholder="Reply…"><button class="primary" data-act="reply">Reply</button>` : ""}
+        <button data-act="open">Open on phone</button><button data-act="dismiss">Dismiss</button></div></div>`).join("")
+    || `<p class="muted">No notifications.</p>`;
+  $$("#notifList .notif").forEach((el) => $$("button", el).forEach((b) => b.onclick = async () => {
+    const key = el.dataset.key, act = b.dataset.act, body = { key };
+    if (act === "reply") { body.text = $("input", el).value.trim(); if (!body.text) return; }
+    try { await api("/api/notifications/" + act, { method: "POST", body: JSON.stringify(body) }); } catch (e) { alert(e.message); return; }
+    if (act !== "open") { state.notifs = state.notifs.filter((x) => x.key !== key); renderNotifs(); }
+  }));
+}
+$("#refreshNotifs").addEventListener("click", loadNotifs);
+$("#clearNotifs").addEventListener("click", async () => { if (confirm("Clear all notifications on the phone?")) { await api("/api/notifications/dismiss", { method: "POST", body: JSON.stringify({ all: true }) }); loadNotifs(); } });
+$$("[data-n]").forEach((el) => el.addEventListener("change", () => {
+  const v = el.type === "checkbox" ? el.checked : el.value.split(",").map((x) => x.trim()).filter(Boolean);
+  api("/api/settings", { method: "POST", body: JSON.stringify({ [el.dataset.n]: v }) });
+}));
+
+// ================================================================== v2: files
+async function upload(target, file, extra = "") {
+  $("#transfer").textContent = `Sending ${file.name}…`;
+  const r = await fetch(`/api/files/${target}${extra}`, { method: "POST", credentials: "same-origin", body: file,
+    headers: { "Content-Type": file.type || "application/octet-stream", "x-file-name": encodeURIComponent(file.name).replace(/%20/g, " ") } });
+  const j = await r.json().catch(() => ({}));
+  $("#transfer").textContent = r.ok ? `✓ ${file.name} ${target === "wallpaper" ? "set as wallpaper" : "sent to the phone"}` : `✗ ${j.error?.message || j.detail || r.status}`;
+}
+function dropZone(zone, input, target) {
+  zone.addEventListener("dragover", (e) => { e.preventDefault(); zone.classList.add("over"); });
+  zone.addEventListener("dragleave", () => zone.classList.remove("over"));
+  zone.addEventListener("drop", async (e) => { e.preventDefault(); zone.classList.remove("over"); for (const f of e.dataTransfer.files) await upload(target, f); });
+  input.addEventListener("change", async () => { for (const f of input.files) await upload(target, f); input.value = ""; });
+}
+dropZone($("#dropPhone"), $("#filePhone"), "phone");
+dropZone($("#dropWall"), $("#fileWall"), "wallpaper");
+$("#clipSend").addEventListener("click", async () => {
+  const t = $("#clipText").value; if (!t) return;
+  await fetch("/api/files/clipboard", { method: "POST", credentials: "same-origin", body: t, headers: { "Content-Type": "text/plain" } });
+  $("#transfer").textContent = "✓ copied to the phone clipboard";
+});
+async function loadFiles() {
+  const r = await api("/api/inbox");
+  $("#inboxFolder").textContent = r.folder;
+  $("#inboxList").innerHTML = r.items.map((i) => {
+    const when = new Date(i.time * 1000).toLocaleString();
+    if (i.kind === "file") {
+      const img = /\.(jpe?g|png|webp)$/i.test(i.name || "");
+      return `<div class="inbox-item"><span>📄</span><div class="what"><a href="/api/inbox/${i.id}/file" download>${esc(i.name)}</a>
+        <div class="muted small">${when} · ${((i.size || 0) / 1024).toFixed(0)} KB</div></div>${img ? `<button data-wall="${i.id}" data-name="${esc(i.name)}">Wallpaper</button>` : ""}</div>`;
+    }
+    const link = i.kind === "url" ? (i.text.match(/https?:\/\/\S+/) || [""])[0] : "";
+    return `<div class="inbox-item"><span>${i.kind === "url" ? "🔗" : "📝"}</span><div class="what">${link ? `<a href="${esc(link)}" target="_blank" rel="noopener">${esc(i.text)}</a>` : esc(i.text)}
+      <div class="muted small">${when}</div></div><button data-copy="${esc(i.text)}">Copy</button></div>`;
+  }).join("") || `<p class="muted">Nothing yet.</p>`;
+  $$("[data-copy]").forEach((b) => b.onclick = () => navigator.clipboard?.writeText(b.dataset.copy));
+  $$("[data-wall]").forEach((b) => b.onclick = async () => {
+    const blob = await (await fetch(`/api/inbox/${b.dataset.wall}/file`, { credentials: "same-origin" })).blob();
+    await upload("wallpaper", new File([blob], b.dataset.name, { type: blob.type }));
+  });
+}
+
+// ================================================================== v2: phone & PC
+function fmtMs(ms) { const m = Math.round((ms || 0) / 60000); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; }
+function gb(b) { return b == null ? "?" : (b / 1024 ** 3).toFixed(1) + " GB"; }
+async function loadPhone() {
+  const [r, pc] = await Promise.all([api("/api/insights?period=" + $("#usagePeriod").value), api("/api/pc").catch(() => null)]);
+  if (pc) $("#pcInfo").innerHTML = [["Host", pc.host], ["OS", pc.os], ["CPU", pc.cpu != null ? pc.cpu + "%" : "– (pip install psutil)"],
+    ["RAM", pc.ram != null ? pc.ram + "%" : "–"], ["Battery", pc.battery != null ? pc.battery + "%" + (pc.charging ? " ⚡" : "") : "–"]]
+    .map(([k, v]) => `<span>${k}</span><b>${esc(v)}</b>`).join("");
+  if (!r.connected) { $("#usage").innerHTML = `<p class="muted">Phone offline.</p>`; $("#deviceInfo").innerHTML = ""; return; }
+  const u = r.usage || {};
+  if (u.error) $("#usage").innerHTML = `<p class="muted">${esc(u.error.message)} — grant <b>Usage access</b> to Nixin on the phone.</p>`;
+  else {
+    const max = Math.max(1, ...(u.apps || []).map((a) => a.ms));
+    $("#usage").innerHTML = `<div class="big">${fmtMs(u.totalMs)}</div><div class="muted small">${u.unlocks ? u.unlocks + " unlocks" : ""}</div>
+      <div class="bars" role="list">${(u.apps || []).map((a) => `<div class="bar" role="listitem"><span>${esc(a.label || a.package)}</span>
+        <div class="track"><div class="fill" style="width:${(100 * a.ms / max).toFixed(1)}%"></div></div><span class="v">${fmtMs(a.ms)}</span></div>`).join("")}</div>`;
+  }
+  const i = r.info || {};
+  if (!i.error) $("#deviceInfo").innerHTML = [["Model", `${i.manufacturer || ""} ${i.model || ""}`], ["Android", i.android],
+    ["Storage free", `${gb(i.storage?.freeBytes)} / ${gb(i.storage?.totalBytes)}`], ["RAM free", `${gb(i.ram?.availBytes)} / ${gb(i.ram?.totalBytes)}`],
+    ["Battery", i.battery ? `${i.battery.level}% · ${i.battery.health || "?"} · ${i.battery.temperatureC ?? "?"}°C` : "–"],
+    ["Network", i.network ? `${i.network.type}${i.network.ssid ? " · " + i.network.ssid : ""}` : "–"],
+    ["Uptime", i.uptimeMs ? fmtMs(i.uptimeMs) : "–"]].map(([k, v]) => `<span>${k}</span><b>${esc(v)}</b>`).join("");
+  const p = r.playing || {};
+  $("#playing").innerHTML = p.title ? `<b>${esc(p.title)}</b>${p.artist ? " — " + esc(p.artist) : ""} <span class="muted">${esc(p.app || "")} · ${esc(p.state || "")}</span>` : "Nothing playing";
+}
+$("#usagePeriod").addEventListener("change", loadPhone);
+async function phoneAction(a) {
+  try {
+    const r = await api("/api/phone/" + a, { method: "POST" });
+    if (a === "locate") $("#locateOut").innerHTML = r.result?.link ? `📍 <a href="${esc(r.result.link)}" target="_blank" rel="noopener">Open in Google Maps</a> (±${Math.round(r.result.accuracy || 0)} m)` : "No location";
+  } catch (e) { $("#locateOut").textContent = e.message; }
+}
+$("#ringBtn").addEventListener("click", () => phoneAction("ring"));
+$("#stopRingBtn").addEventListener("click", () => phoneAction("stop_ring"));
+$("#locateBtn").addEventListener("click", () => { $("#locateOut").textContent = "Locating…"; phoneAction("locate"); });
 
 // ------------------------------------------------------------------ websocket
 function connect() {

@@ -428,12 +428,27 @@ class RoutineEngine(Feature):
         return Outcome(True, tr(ctx, f"'{r.name}' delete kar di.", f"Deleted '{r.name}'."))
 
 
+_EVENT_NAMES = {
+    "battery_low": "Low battery", "battery_full": "Battery full", "charging": "Charger connected",
+    "unplugged": "Charger removed", "notification": "Notification", "call_incoming": "Incoming call",
+    "screen_on": "Screen on", "screen_off": "Screen off", "unlocked": "Phone unlocked", "phone_connected": "Phone connected",
+    "phone_disconnected": "Phone disconnected", "wifi_connected": "Wi-Fi connected", "wifi_disconnected": "Wi-Fi disconnected",
+}
+
+
 def _auto_name(t: Trigger, actions: list[str]) -> str:
     first = re.sub(r"^(?:say|notify):\s*", "", actions[0])[:30]
     if t.type == "time":
         return f"{t.at} — {first}"
     if t.type == "event":
-        return f"{t.event} — {first}"
+        name = _EVENT_NAMES.get(t.event or "", t.event or "Event")
+        if t.event == "battery_low":
+            name += f" < {t.below if t.below is not None else 20}%"
+        if t.contains:
+            name += f" · {t.contains.title()}"
+        if t.app:
+            name += f" · {t.app}"
+        return name
     if t.type == "phrase" and t.phrases:
         return t.phrases[0].title()
     return first

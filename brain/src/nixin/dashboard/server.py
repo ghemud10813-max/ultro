@@ -10,8 +10,10 @@ import asyncio
 import json
 import secrets
 import time
+from dataclasses import asdict
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import unquote
 
 import segno
 from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
@@ -19,6 +21,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 
 from nixin import __version__
 from nixin.app import RUNTIME_SETTINGS
+from nixin.features.routines import EVENTS, Routine
 from nixin.link.protocol import PhoneError
 
 if TYPE_CHECKING:
@@ -209,6 +212,205 @@ class Dashboard:
 
             return Response(base64.b64decode(cap["data"]), media_type="image/jpeg")
 
+        # ------------------------------------------------------------ v2: automations
+        @a.get("/api/routines")
+        async def routines(request: Request):
+            self._guard(request)
+            return {"routines": [r.model_dump() for r in self.nx.routines.list()], "events": list(EVENTS)}
+
+        @a.post("/api/routines")
+        async def save_routine(request: Request):
+            self._guard(request)
+            b = await request.json()
+            try:
+                r = Routine.model_validate(b)
+            except Exception as e:  # noqa: BLE001
+                raise HTTPException(400, f"Invalid routine: {e}") from e
+            if not r.actions:
+                raise HTTPException(400, "A routine needs at least one action")
+            return self.nx.routines.save(r).model_dump()
+
+        @a.delete("/api/routines/{rid}")
+        async def delete_routine(request: Request, rid: str):
+            self._guard(request)
+            return {"ok": self.nx.routines.delete(rid)}
+
+        @a.post("/api/routines/{rid}/run")
+        async def run_routine(request: Request, rid: str):
+            self._guard(request)
+            r = self.nx.routines.routines.get(rid)
+            if r is None:
+                raise HTTPException(404)
+            asyncio.create_task(self.nx.routines.run(r, {}, "dashboard"))
+            return {"ok": True}
+
+        @a.get("/api/skills")
+        async def skills(request: Request):
+            self._guard(request)
+            sk = self.nx.skills
+            return {"skills": [asdict(s) for s in sk.list()], "autoReplay": sk.auto_replay, "recording": sk.recording}
+
+        @a.post("/api/skills/auto_replay")
+        async def skills_auto(request: Request):
+            self._guard(request)
+            on = bool((await request.json()).get("on"))
+            self.nx.skills.auto_replay = on
+            self.nx.store.set_setting("skills_auto_replay", on)
+            return {"autoReplay": on}
+
+        @a.delete("/api/skills/{sid}")
+        async def delete_skill(request: Request, sid: str):
+            self._guard(request)
+            return {"ok": self.nx.skills.delete(sid)}
+
+        @a.post("/api/skills/{sid}/run")
+        async def run_skill(request: Request, sid: str):
+            self._guard(request)
+            s = self.nx.skills.skills.get(sid)
+            if s is None:
+                raise HTTPException(404)
+            asyncio.create_task(self.nx.brain.handle(f"{s.name} chalao", source="dashboard") if s.kind == "taught"
+                                else self.nx.brain.handle(s.goal or s.name, source="dashboard"))
+            return {"ok": True}
+
+        @a.get("/api/plugins")
+        async def plugins(request: Request):
+            self._guard(request)
+            p = self.nx.plugins
+            return {"plugins": p.describe(), "errors": p.errors, "dirs": [str(d) for d in p.dirs]}
+
+        @a.post("/api/plugins/reload")
+        async def reload_plugins(request: Request):
+            self._guard(request)
+            self.nx.plugins.load()
+            return {"plugins": self.nx.plugins.describe(), "errors": self.nx.plugins.errors}
+
+        # ------------------------------------------------------------ v2: notifications
+        @a.get("/api/notifications")
+        async def notifications(request: Request):
+            self._guard(request)
+            nc = self.nx.notifications
+            items = sorted(nc.live.values(), key=lambda n: -(n.get("received") or 0))
+            if self.nx.phone.connected:
+                try:
+                    res = await self.nx.phone.call("notif.list", {"limit": 20}, origin="dashboard")
+                    seen = {n.get("key") for n in items}
+                    items += [n for n in res.get("notifications") or [] if n.get("key") not in seen]
+                except PhoneError:
+                    pass
+            cfg = self.nx.cfg.notifications
+            return {"items": items[:60], "settings": {"announce": cfg.announce, "vip": cfg.vip,
+                                                       "announce_apps": cfg.announce_apps, "toast_on_pc": cfg.toast_on_pc}}
+
+        @a.post("/api/notifications/{action}")
+        async def notif_action(request: Request, action: str):
+            self._guard(request)
+            b = await request.json()
+            try:
+                if action == "reply":
+                    text = str(b.get("text") or "").strip()
+                    if not b.get("key") or not text:
+                        raise HTTPException(400, "key and text required")
+                    # typed on the dashboard and sent with an explicit click = confirmed by the user
+                    res = await self.nx.phone.call("notif.reply", {"key": b["key"], "text": text[:2000]}, origin="dashboard",
+                                                   confirmed=True)
+                    self.nx.notifications.live.pop(b["key"], None)
+                elif action == "dismiss":
+                    res = await self.nx.phone.call("notif.dismiss", {"all": True} if b.get("all") else {"key": b["key"]},
+                                                   origin="dashboard")
+                    if b.get("all"):
+                        self.nx.notifications.live.clear()
+                    else:
+                        self.nx.notifications.live.pop(b.get("key"), None)
+                elif action == "open":
+                    res = await self.nx.phone.call("notif.open", {"key": b["key"]}, origin="dashboard")
+                else:
+                    raise HTTPException(404)
+            except PhoneError as e:
+                return JSONResponse({"error": e.to_dict()}, status_code=409)
+            return {"ok": True, "result": res}
+
+        # ------------------------------------------------------------ v2: files / inbox
+        @a.get("/api/inbox")
+        async def inbox(request: Request):
+            self._guard(request)
+            return {"items": self.nx.bridge.list_items(60), "folder": str(self.nx.bridge.inbox)}
+
+        @a.get("/api/inbox/{iid}/file")
+        async def inbox_file(request: Request, iid: str):
+            self._guard(request)
+            item = next((i for i in self.nx.bridge.existing_files() if i.id == iid), None)
+            if item is None:
+                raise HTTPException(404)
+            return FileResponse(item.path, filename=item.name, media_type=item.mime or "application/octet-stream")
+
+        @a.post("/api/files/{target}")
+        async def push_file(request: Request, target: str):
+            """Raw body upload (no multipart dependency): header x-file-name, content-type."""
+            self._guard(request)
+            data = await request.body()
+            if not data:
+                raise HTTPException(400, "empty file")
+            name = unquote(request.headers.get("x-file-name") or "file")
+            mime = request.headers.get("content-type") or "application/octet-stream"
+            try:
+                if target == "phone":
+                    res = await self.nx.bridge.push_bytes(data, name, mime)
+                elif target == "wallpaper":
+                    res = await self.nx.bridge.set_wallpaper(data, request.query_params.get("where") or "both")
+                elif target == "clipboard":
+                    res = await self.nx.phone.call("clipboard.set", {"text": data.decode("utf-8", "replace")[:100000]},
+                                                   origin="dashboard")
+                else:
+                    raise HTTPException(404)
+            except PhoneError as e:
+                return JSONResponse({"error": e.to_dict()}, status_code=409)
+            except ValueError as e:
+                raise HTTPException(400, str(e)) from e
+            return {"ok": True, "result": res}
+
+        # ------------------------------------------------------------ v2: phone insights / extras, PC
+        @a.get("/api/insights")
+        async def insights(request: Request, period: str = "today"):
+            self._guard(request)
+            out: dict[str, Any] = {"connected": self.nx.phone.connected}
+            if not self.nx.phone.connected:
+                return out
+            for key, method, params in (("usage", "usage.stats", {"period": period if period in ("today", "yesterday", "week") else "today",
+                                                                   "limit": 12}),
+                                        ("info", "device.info", {}), ("playing", "media.now_playing", {})):
+                try:
+                    out[key] = await self.nx.phone.call(method, params, origin="dashboard")
+                except PhoneError as e:
+                    out[key] = {"error": e.to_dict()}
+            return out
+
+        @a.post("/api/phone/{action}")
+        async def phone_action(request: Request, action: str):
+            self._guard(request)
+            try:
+                if action == "ring":
+                    res = await self.nx.phone.call("device.ring", {"seconds": 30}, origin="dashboard")
+                elif action == "stop_ring":
+                    res = await self.nx.phone.call("device.ring", {"stop": True}, origin="dashboard")
+                elif action == "locate":
+                    res = await self.nx.phone.call("device.location", {"timeoutMs": 12000}, origin="dashboard", timeout=16)
+                    if res.get("lat") is not None:
+                        res["link"] = f"https://maps.google.com/?q={res['lat']:.6f},{res['lon']:.6f}"
+                elif action == "teach_stop":
+                    res = {"reply": await self.nx.brain.handle("recording save karo", source="dashboard")}
+                else:
+                    raise HTTPException(404)
+            except PhoneError as e:
+                return JSONResponse({"error": e.to_dict()}, status_code=409)
+            return {"ok": True, "result": res}
+
+        @a.get("/api/pc")
+        async def pc_status(request: Request):
+            self._guard(request)
+            st = await self.nx.pc.pc.status()
+            return {"cpu": st.cpu, "ram": st.ram, "battery": st.battery, "charging": st.charging, "host": st.host, "os": st.os}
+
         @a.websocket("/ws")
         async def ws(websocket: WebSocket):
             origin = websocket.headers.get("origin", "")
@@ -316,4 +518,8 @@ class Dashboard:
             "settings": self.settings(),
             "gateway": nx.gateway.status(),
             "adb": nx.adb.enabled,
+            "recording": nx.skills.recording,
+            "counts": {"routines": len(nx.routines.routines), "skills": len(nx.skills.skills),
+                       "inbox": len(nx.bridge.items), "notifications": len(nx.notifications.live),
+                       "plugins": len(nx.plugins.commands)},
         }

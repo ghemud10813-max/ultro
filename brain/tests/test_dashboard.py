@@ -81,3 +81,56 @@ async def test_websocket_rejects_foreign_origin(running):
     with pytest.raises((websockets.InvalidStatus, websockets.ConnectionClosed, TimeoutError)):
         async with websockets.connect(url, origin="https://evil.example") as ws:
             await asyncio.wait_for(ws.recv(), 3)
+
+
+@pytest.fixture
+async def dash_world(world, cfg):
+    """Dashboard on top of the e2e world (app + simulated phone)."""
+    from nixin.core.serve import EmbeddedServer
+    from nixin.dashboard.server import Dashboard
+
+    app, sim, client, llm = world
+    dash = Dashboard(app)
+    srv = EmbeddedServer(dash.app, "127.0.0.1", 0)
+    await srv.start()
+    yield app, sim, f"http://127.0.0.1:{srv.port}", {"x-nixin-token": dash.token}
+    await srv.stop()
+
+
+async def test_v2_endpoints(dash_world):
+    app, sim, base, h = dash_world
+    async with httpx.AsyncClient(headers=h, timeout=10) as c:
+        r = (await c.get(base + "/api/routines")).json()
+        assert any(x["name"] == "Good night" for x in r["routines"]) and "battery_low" in r["events"]
+        new = {"name": "Night", "trigger": {"type": "time", "at": "23:00", "days": [1, 2]}, "actions": ["dnd on karo"]}
+        saved = (await c.post(base + "/api/routines", json=new)).json()
+        assert saved["id"] and app.routines.routines[saved["id"]].trigger.days == [1, 2]
+        assert (await c.post(base + "/api/routines", json={"name": "x", "trigger": {"type": "nope"}, "actions": ["a"]})).status_code == 400
+        await c.post(base + f"/api/routines/{saved['id']}/run")
+        for _ in range(40):
+            if sim.dnd:
+                break
+            await asyncio.sleep(0.05)
+        assert sim.dnd is True
+        assert (await c.delete(base + f"/api/routines/{saved['id']}")).json()["ok"] is True
+
+        n = (await c.get(base + "/api/notifications")).json()
+        assert any(x["title"] == "Mummy" for x in n["items"])
+        await c.post(base + "/api/notifications/reply", json={"key": "n2", "text": "haan"})
+        assert sim.notif_replies[-1]["text"] == "haan"
+        await c.post(base + "/api/settings", json={"notifications.vip": "Mummy, Papa"})
+        assert app.cfg.notifications.vip == ["Mummy", "Papa"]
+
+        r = await c.post(base + "/api/files/phone", content=b"hello file", headers={"x-file-name": "notes%20v2.txt",
+                                                                                     "content-type": "text/plain"})
+        assert r.status_code == 200 and sim.files["notes v2.txt"] == b"hello file"
+        await c.post(base + "/api/files/clipboard", content=b"clip!", headers={"content-type": "text/plain"})
+        assert sim.clipboard == "clip!"
+
+        ins = (await c.get(base + "/api/insights")).json()
+        assert ins["usage"]["totalMs"] > 0 and ins["info"]["model"] == "Simulator"
+        loc = (await c.post(base + "/api/phone/locate")).json()
+        assert "maps.google.com" in loc["result"]["link"]
+        assert (await c.get(base + "/api/skills")).json()["autoReplay"] is True
+        assert (await c.get(base + "/api/plugins")).json()["plugins"] == []
+        assert (await c.get(base + "/api/inbox")).json()["items"] == []
