@@ -63,6 +63,10 @@ private val ROWS = listOf(
     PermRow("microphone", "Microphone", "Talk to Nixin from the phone.", false),
     PermRow("writeSettings", "Modify system settings", "Screen brightness.", false),
     PermRow("dnd", "Do Not Disturb access", "DND and silent mode.", false),
+    PermRow("location", "Location", "\"Mera phone kahan hai?\" and weather for your area.", false),
+    PermRow("backgroundLocation", "Location: Allow all the time", "Lets the PC find the phone while Nixin is in the background.", false),
+    PermRow("usage", "Usage access", "Screen time: \"aaj maine phone kitna chalaya?\"", false),
+    PermRow("answerCalls", "Answer calls", "\"Call utha lo / kaat do\".", false),
 )
 
 @SuppressLint("BatteryLife")
@@ -104,6 +108,10 @@ fun SetupScreen() {
             "microphone" -> runtime.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
             "writeSettings" -> open(Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS, Uri.parse("package:${ctx.packageName}")))
             "dnd" -> open(Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS))
+            "location" -> runtime.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
+            "backgroundLocation" -> runtime.launch(arrayOf(Manifest.permission.ACCESS_BACKGROUND_LOCATION))
+            "usage" -> open(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+            "answerCalls" -> runtime.launch(arrayOf(Manifest.permission.ANSWER_PHONE_CALLS))
         }
     }
 

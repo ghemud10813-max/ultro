@@ -12,11 +12,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -35,6 +37,7 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SuggestionChip
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -58,8 +61,15 @@ import com.letvler.nixin.core.AppState
 import com.letvler.nixin.voice.VoiceInput
 
 private val EXAMPLES = listOf(
-    "volume badha do", "torch on karo", "battery kitni hai", "meri latest notification padh ke bata",
-    "WhatsApp pe Mummy ko bol main 10 min late hoon", "youtube pe lofi songs chalao",
+    "volume badha do", "briefing do", "mere messages summarize karo", "har raat 11 baje phone silent kar dena",
+    "WhatsApp pe Mummy ko bol main 10 min late hoon", "PC ka screenshot bhejo", "sikho: chai order",
+)
+
+/** Quick PC controls (sent as ordinary commands, so they work by voice too). */
+private val PC_CHIPS = listOf(
+    "🔒 Lock PC" to "PC lock karo", "🔉 PC vol −" to "PC ka volume kam karo", "🔊 PC vol +" to "PC ka volume badhao",
+    "⏯ PC media" to "PC pe gaana pause karo", "📸 PC screenshot" to "PC ka screenshot bhejo",
+    "📋 PC clipboard" to "PC ka clipboard phone pe bhejo", "💻 PC status" to "PC ka status batao",
 )
 
 @Composable
@@ -101,8 +111,26 @@ fun HomeScreen(onOpenSetup: () -> Unit) {
 
     LaunchedEffect(chat.size) { if (chat.isNotEmpty()) listState.animateScrollToItem(chat.size - 1) }
 
+    val scenes by AppState.scenes.collectAsStateWithLifecycle()
+    val recording by AppState.recording.collectAsStateWithLifecycle()
+
     Column(Modifier.fillMaxSize().imePadding()) {
         StatusCard(link, stopped, onOpenSetup)
+        recording?.let { name ->
+            Card(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                colors = CardDefaults.cardColors(containerColor = NixinDanger.copy(alpha = 0.18f)),
+            ) {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text("🔴 Learning “$name” — karke dikhao", Modifier.weight(1f), fontSize = 13.sp)
+                    TextButton(onClick = { send("recording cancel karo", "phone_text") }) { Text("Cancel") }
+                    Button(onClick = { send("recording save karo", "phone_text") }) { Text("Save") }
+                }
+            }
+        }
+        if (connected && !stopped) {
+            QuickChips(scenes.map { it.label to it.text } + PC_CHIPS) { send(it, "phone_text") }
+        }
         if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(horizontal = 16.dp))
 
         LazyColumn(
@@ -158,6 +186,19 @@ fun HomeScreen(onOpenSetup: () -> Unit) {
                     Icon(Icons.AutoMirrored.Filled.Send, contentDescription = "Send")
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun QuickChips(items: List<Pair<String, String>>, onClick: (String) -> Unit) {
+    LazyRow(
+        Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(horizontal = 12.dp),
+    ) {
+        items(items) { (label, text) ->
+            SuggestionChip(onClick = { onClick(text) }, label = { Text(label, fontSize = 13.sp) })
         }
     }
 }

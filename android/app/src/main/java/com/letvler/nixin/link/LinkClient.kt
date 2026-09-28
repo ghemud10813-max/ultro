@@ -101,6 +101,12 @@ class LinkClient(private val scope: CoroutineScope, private val dispatcher: Disp
         Nixin.clearAskNotification()
     }
 
+    /** Send a big message (file chunk) without overflowing OkHttp's 16 MB outgoing queue. */
+    suspend fun sendLarge(obj: JsonObject): Boolean {
+        while (connected && (socket?.queueSize() ?: 0L) > 2_000_000L) delay(40)
+        return connected && send(obj)
+    }
+
     fun sendEvent(name: String, data: JsonObject) {
         if (connected) send(jsonOf("t" to "event", "name" to name, "data" to data))
     }
@@ -307,6 +313,11 @@ class LinkClient(private val scope: CoroutineScope, private val dispatcher: Disp
                 if (Nixin.settings.speakReplies.value) Nixin.speaker.speak(ask.text)
             }
             "echo" -> m.str("text")?.let { AppState.addChat(AppState.ChatMessage(true, it)) }
+            "scenes" -> AppState.setScenes(m.arr("items")?.mapNotNull { el ->
+                (el as? JsonObject)?.let { o -> o.str("label")?.let { l -> AppState.Scene(l, o.str("text") ?: l) } }
+            }.orEmpty())
+            "file_ack" -> AppState.addChat(AppState.ChatMessage(false,
+                if (m.bool("ok") == true) "✓ PC pe save ho gaya: ${m.str("name") ?: "file"}" else "✗ PC pe file nahi gayi: ${m.str("error") ?: "?"}"))
             "cancel" -> {
                 dispatcher.cancelTask(m.str("taskId"))
                 AppState.setBusy(false)

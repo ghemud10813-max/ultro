@@ -5,4 +5,9 @@
     <string name="tile_label">Nixin</string>
     <string name="channel_link">Nixin connection</string>
     <string name="channel_ask">Nixin questions</string>
+    <string name="channel_alerts">Nixin alerts &amp; reminders</string>
+    <string name="share_label">Send to PC (Nixin)</string>
+    <string name="shortcut_voice">Talk to Nixin</string>
+    <string name="shortcut_good_night">Good night</string>
+    <string name="shortcut_lock_pc">Lock PC</string>
 </resources>

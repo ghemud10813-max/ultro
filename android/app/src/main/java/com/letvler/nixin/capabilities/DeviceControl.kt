@@ -67,7 +67,17 @@ class DeviceControl(private val ctx: Context) {
             "dnd" to nm.isNotificationPolicyAccessGranted,
             "postNotifications" to (Build.VERSION.SDK_INT < 33 || granted(Manifest.permission.POST_NOTIFICATIONS)),
             "batteryUnrestricted" to pm.isIgnoringBatteryOptimizations(ctx.packageName),
+            "location" to (granted(Manifest.permission.ACCESS_FINE_LOCATION) || granted(Manifest.permission.ACCESS_COARSE_LOCATION)),
+            "backgroundLocation" to granted(Manifest.permission.ACCESS_BACKGROUND_LOCATION),
+            "usage" to usageAccess(),
+            "answerCalls" to granted(Manifest.permission.ANSWER_PHONE_CALLS),
         )
+    }
+
+    fun usageAccess(): Boolean {
+        val aom = ctx.getSystemService(android.app.AppOpsManager::class.java)
+        return aom.unsafeCheckOpNoThrow(android.app.AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), ctx.packageName) ==
+            android.app.AppOpsManager.MODE_ALLOWED
     }
 
     fun notificationAccess(): Boolean {
@@ -108,6 +118,8 @@ class DeviceControl(private val ctx: Context) {
             "settings" to mapOf(
                 "allowScreenshots" to Nixin.settings.allowScreenshots.value,
                 "speakReplies" to Nixin.settings.speakReplies.value,
+                "mirrorNotifications" to Nixin.settings.mirrorNotifications.value,
+                "phoneEvents" to Nixin.settings.phoneEvents.value,
             ),
             "device" to mapOf(
                 "model" to Build.MODEL, "manufacturer" to Build.MANUFACTURER, "sdk" to Build.VERSION.SDK_INT,

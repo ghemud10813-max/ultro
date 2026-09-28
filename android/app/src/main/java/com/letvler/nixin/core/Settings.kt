@@ -38,6 +38,14 @@ class Settings(context: Context) {
     private val _autoStart = MutableStateFlow(prefs.getBoolean("auto_start", true))
     val autoStart: StateFlow<Boolean> = _autoStart
 
+    private val _mirrorNotifications = MutableStateFlow(prefs.getBoolean("mirror_notifications", false))
+    /** Push every new notification (and incoming-call names) to the PC live. Off by default. */
+    val mirrorNotifications: StateFlow<Boolean> = _mirrorNotifications
+
+    private val _phoneEvents = MutableStateFlow(prefs.getBoolean("phone_events", true))
+    /** Battery / charger / screen / Wi-Fi events for routines on the PC ("jab battery 20% se kam ho…"). */
+    val phoneEvents: StateFlow<Boolean> = _phoneEvents
+
     /** Blocklist entries pushed by the PC (nixin.toml [blocklist]); in-memory only. */
     @Volatile var pcBlocked: Set<String> = emptySet()
 
@@ -97,6 +105,16 @@ class Settings(context: Context) {
     fun setExtraBlocked(v: Set<String>) {
         prefs.edit().putStringSet("extra_blocked", v).apply()
         _extraBlocked.value = v
+    }
+
+    fun setMirrorNotifications(v: Boolean) {
+        prefs.edit().putBoolean("mirror_notifications", v).apply()
+        _mirrorNotifications.value = v
+    }
+
+    fun setPhoneEvents(v: Boolean) {
+        prefs.edit().putBoolean("phone_events", v).apply()
+        _phoneEvents.value = v
     }
 
     fun setAutoStart(v: Boolean) {

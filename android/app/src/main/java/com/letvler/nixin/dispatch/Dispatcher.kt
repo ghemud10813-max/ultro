@@ -1,10 +1,13 @@
 package com.letvler.nixin.dispatch
 
 import com.letvler.nixin.Nixin
+import com.letvler.nixin.a11y.Recorder
 import com.letvler.nixin.a11y.UiController
 import com.letvler.nixin.capabilities.AppControl
 import com.letvler.nixin.capabilities.CommControl
 import com.letvler.nixin.capabilities.DeviceControl
+import com.letvler.nixin.capabilities.FileInbox
+import com.letvler.nixin.capabilities.PhoneExtras
 import com.letvler.nixin.core.AppState
 import com.letvler.nixin.core.ErrorCode
 import com.letvler.nixin.core.NixinException
@@ -41,6 +44,8 @@ class Dispatcher(
     private val device: DeviceControl,
     private val apps: AppControl,
     private val comm: CommControl,
+    private val extras: PhoneExtras,
+    private val inbox: FileInbox,
 ) {
     private val handlers: Map<String, Handler> = mapOf(
         "device.status" to h { _, _ -> device.status() },
@@ -75,6 +80,27 @@ class Dispatcher(
         "ui.tap_text" to h { p, c -> UiController.tapText(p, c) },
         "ui.wait" to h { p, _ -> UiController.waitFor(p) },
         "screen.capture" to h { p, _ -> UiController.screenshot(p) },
+        // v2
+        "device.info" to h { _, _ -> extras.info() },
+        "device.ring" to h { p, _ -> extras.ring(p) },
+        "device.location" to h { p, _ -> extras.location(p) },
+        "device.setting" to h { p, _ -> extras.setting(p) },
+        "device.vibrate" to h { p, _ -> extras.vibrate(p) },
+        "device.wallpaper" to h { p, _ -> extras.wallpaper(p) },
+        "clipboard.set" to h { p, _ -> extras.clipboardSet(p) },
+        "clipboard.get" to h { _, _ -> extras.clipboardGet() },
+        "file.push" to h { p, _ -> inbox.push(p) },
+        "notif.reply" to h { p, _ -> NotificationWatcher.reply(p) },
+        "notif.dismiss" to h { p, _ -> NotificationWatcher.dismiss(p) },
+        "notif.open" to h { p, _ -> NotificationWatcher.open(p) },
+        "media.now_playing" to h { _, _ -> extras.nowPlaying() },
+        "call.control" to h { p, _ -> extras.callControl(p) },
+        "usage.stats" to h { p, _ -> extras.usage(p) },
+        "ui.text" to h { p, _ -> UiController.text(p) },
+        "ui.scroll_to" to h { p, _ -> UiController.scrollTo(p) },
+        "rec.start" to h { p, _ -> Recorder.start(p) },
+        "rec.stop" to h { p, _ -> Recorder.stop(p) },
+        "nixin.notify" to h { p, _ -> extras.notify(p) },
     )
 
     val implemented: Set<String> get() = handlers.keys
@@ -92,7 +118,7 @@ class Dispatcher(
         val reply = execute(method, params, meta, timeoutMs)
         synchronized(recent) { recent[id] = reply }
         val ok = reply is Reply.Ok
-        if (method != "device.status" && method != "ui.snapshot" && method != "screen.capture") {
+        if (method != "device.status" && method != "ui.snapshot" && method != "screen.capture" && method != "file.push") {
             AppState.addLog(AppState.ActionLog(method, ok, if (reply is Reply.Err) "${reply.code}: ${reply.message}" else ""))
         }
         return reply

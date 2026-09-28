@@ -147,6 +147,15 @@ class MethodsRegistryTest {
         val shared = methods.mapValues { (_, v) -> ((v as JsonObject)["risk"] as JsonPrimitive).contentOrNull }
         assertEquals(shared, Methods.RISK)
     }
+
+    @Test
+    fun `dispatcher has a handler for every protocol method`() {
+        val methods = (parseObject(sharedFile().readText())!!["methods"] as JsonObject).keys
+        val dispatcher = File(sharedFile().parentFile.parentFile.parentFile,
+            "android/app/src/main/java/com/letvler/nixin/dispatch/Dispatcher.kt").readText()
+        val handled = Regex("\"([a-z_]+\\.[a-z_]+)\" to h \\{").findAll(dispatcher).map { it.groupValues[1] }.toSet()
+        assertEquals(methods.sorted(), handled.sorted())
+    }
 }
 
 class PairingPayloadTest {

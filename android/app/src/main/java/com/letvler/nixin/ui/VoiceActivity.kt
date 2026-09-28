@@ -38,8 +38,20 @@ import kotlinx.coroutines.delay
 
 /** Floating "listening" card started from the Quick Settings tile or the notification's Talk button. */
 class VoiceActivity : ComponentActivity() {
+    companion object {
+        /** Launcher shortcuts may run only these fixed commands (this activity is exported). */
+        val SHORTCUT_COMMANDS = setOf("good night", "PC lock karo")
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val shortcut = intent?.getStringExtra("command")?.takeIf { it in SHORTCUT_COMMANDS }
+        if (shortcut != null) {
+            val ok = Nixin.link.sendCommand(shortcut, "phone_text")
+            android.widget.Toast.makeText(this, if (ok) "Nixin: $shortcut" else "PC se connected nahi hai", android.widget.Toast.LENGTH_SHORT).show()
+            finish()
+            return
+        }
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), 7)
         }

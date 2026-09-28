@@ -11,6 +11,8 @@ import android.content.Intent
 import com.letvler.nixin.capabilities.AppControl
 import com.letvler.nixin.capabilities.CommControl
 import com.letvler.nixin.capabilities.DeviceControl
+import com.letvler.nixin.capabilities.FileInbox
+import com.letvler.nixin.capabilities.PhoneExtras
 import com.letvler.nixin.core.AppState
 import com.letvler.nixin.core.Settings
 import com.letvler.nixin.core.jsonOf
@@ -39,6 +41,10 @@ object Nixin {
         private set
     lateinit var comm: CommControl
         private set
+    lateinit var extras: PhoneExtras
+        private set
+    lateinit var inbox: FileInbox
+        private set
     lateinit var dispatcher: Dispatcher
         private set
     lateinit var link: LinkClient
@@ -50,8 +56,11 @@ object Nixin {
 
     const val CHANNEL_LINK = "nixin_link"
     const val CHANNEL_ASK = "nixin_ask"
+    const val CHANNEL_ALERTS = "nixin_alerts"
     const val NOTIF_LINK = 1
     const val NOTIF_ASK = 2
+    const val NOTIF_RING = 5
+    const val NOTIF_RECORD = 6
 
     private val labels = ConcurrentHashMap<String, String>()
 
@@ -61,7 +70,9 @@ object Nixin {
         device = DeviceControl(application)
         apps = AppControl(application)
         comm = CommControl(application)
-        dispatcher = Dispatcher(device, apps, comm)
+        extras = PhoneExtras(application)
+        inbox = FileInbox(application)
+        dispatcher = Dispatcher(device, apps, comm, extras, inbox)
         link = LinkClient(scope, dispatcher)
         speaker = Speaker(application)
         createChannels(application)
@@ -94,8 +105,9 @@ object Nixin {
         if (::link.isInitialized) link.sendForeground(pkg)
     }
 
-    fun onNotification(@Suppress("UNUSED_PARAMETER") item: NotificationWatcher.Item) {
-        // Notifications stay on the phone until the PC asks (notif.list). Nothing is pushed.
+    fun onNotification(item: NotificationWatcher.Item) {
+        // Pushed live only when the user turned on "Mirror notifications"; otherwise the PC asks (notif.list).
+        if (settings.mirrorNotifications.value && ::link.isInitialized) link.sendEvent("notification", jsonOf(*item.toMap().toList().toTypedArray()))
     }
 
     // ------------------------------------------------------------------ kill switch
@@ -128,6 +140,11 @@ object Nixin {
         nm.createNotificationChannel(
             NotificationChannel(CHANNEL_ASK, ctx.getString(R.string.channel_ask), NotificationManager.IMPORTANCE_HIGH).apply {
                 description = "Confirmations Nixin needs from you (send this message? which contact?)"
+            },
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(CHANNEL_ALERTS, ctx.getString(R.string.channel_alerts), NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "Reminders, routines, files from the PC, find-my-phone and teach mode"
             },
         )
     }

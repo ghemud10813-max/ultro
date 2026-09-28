@@ -37,6 +37,7 @@ class LinkService : Service() {
 
     private var observer: Job? = null
     private var netCallback: ConnectivityManager.NetworkCallback? = null
+    private var events: PhoneEvents? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -48,9 +49,17 @@ class LinkService : Service() {
         observer = Nixin.scope.launch {
             combine(AppState.link, Nixin.settings.stopped) { a, b -> a to b }.collect { updateNotification() }
         }
+        events = PhoneEvents(this).also { it.register() }
         val cm = getSystemService(ConnectivityManager::class.java)
         netCallback = object : ConnectivityManager.NetworkCallback() {
-            override fun onAvailable(network: Network) = Nixin.link.reconnectNow()
+            override fun onAvailable(network: Network) {
+                Nixin.link.reconnectNow()
+                events?.onNetworkChanged()
+            }
+
+            override fun onLost(network: Network) {
+                events?.onNetworkChanged()
+            }
         }
         runCatching {
             cm.registerNetworkCallback(
@@ -66,6 +75,7 @@ class LinkService : Service() {
     }
 
     override fun onDestroy() {
+        events?.unregister()
         observer?.cancel()
         netCallback?.let { runCatching { getSystemService(ConnectivityManager::class.java).unregisterNetworkCallback(it) } }
         Nixin.link.stop()

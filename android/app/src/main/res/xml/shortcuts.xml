@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press the Nixin icon: talk to Nixin, or run a scene without opening the app -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="voice"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_voice">
+        <intent
+            android:action="com.letvler.nixin.VOICE"
+            android:targetPackage="com.letvler.nixin"
+            android:targetClass="com.letvler.nixin.ui.VoiceActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="good_night"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_good_night">
+        <intent
+            android:action="com.letvler.nixin.COMMAND"
+            android:targetPackage="com.letvler.nixin"
+            android:targetClass="com.letvler.nixin.ui.VoiceActivity">
+            <extra android:name="command" android:value="good night" />
+        </intent>
+    </shortcut>
+    <shortcut
+        android:shortcutId="lock_pc"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_lock_pc">
+        <intent
+            android:action="com.letvler.nixin.COMMAND"
+            android:targetPackage="com.letvler.nixin"
+            android:targetClass="com.letvler.nixin.ui.VoiceActivity">
+            <extra android:name="command" android:value="PC lock karo" />
+        </intent>
+    </shortcut>
+</shortcuts>

@@ -36,6 +36,8 @@ fun SettingsScreen() {
     val speak by s.speakReplies.collectAsStateWithLifecycle()
     val lang by s.voiceLanguage.collectAsStateWithLifecycle()
     val autoStart by s.autoStart.collectAsStateWithLifecycle()
+    val mirror by s.mirrorNotifications.collectAsStateWithLifecycle()
+    val events by s.phoneEvents.collectAsStateWithLifecycle()
     val extra by s.extraBlocked.collectAsStateWithLifecycle()
     var newBlocked by remember { mutableStateOf("") }
 
@@ -55,6 +57,15 @@ fun SettingsScreen() {
         }
         Toggle("Connect automatically after reboot", "Starts the PC link when the phone boots.", autoStart) {
             s.setAutoStart(it)
+        }
+        Toggle("Mirror notifications to the PC", "New notifications (and incoming-call names) appear live on the PC " +
+            "dashboard, can be announced there and replied to. OTP-like codes stay masked; blocked apps are never sent.", mirror) {
+            s.setMirrorNotifications(it)
+            Nixin.link.sendStatus()
+        }
+        Toggle("Send phone events", "Battery, charger, screen and Wi-Fi changes, so routines on the PC can react " +
+            "(\"jab battery 20% se kam ho to bata dena\").", events) {
+            s.setPhoneEvents(it)
         }
 
         Text("Voice language (phone microphone)", fontWeight = FontWeight.SemiBold)

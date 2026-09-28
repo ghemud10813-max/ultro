@@ -419,6 +419,48 @@ object UiController {
         return sb.toString()
     }
 
+    // ------------------------------------------------------------------ v2: read & find
+    /** All visible text in reading order (password fields excluded), for "screen padh ke sunao". */
+    fun text(params: JsonObject): JsonObject {
+        val svc = service()
+        val pkg = guardScreen(svc)
+        val root = svc.appRoot() ?: fail(ErrorCode.FAILED, "No active window")
+        val max = (params.int("maxChars") ?: 6000).coerceIn(200, 20000)
+        val sb = StringBuilder()
+        var last = ""
+        fun walk(n: AccessibilityNodeInfo, depth: Int) {
+            if (sb.length >= max || depth > 40 || !n.isVisibleToUser) return
+            val t = if (n.isPassword) null else (n.text?.toString() ?: n.contentDescription?.toString().takeIf { n.childCount == 0 })
+            val clean = t?.replace(Regex("\\s+"), " ")?.trim()
+            if (!clean.isNullOrEmpty() && clean != last) {
+                sb.append(clean).append('\n')
+                last = clean
+            }
+            for (i in 0 until n.childCount) n.getChild(i)?.let { walk(it, depth + 1) }
+        }
+        walk(root, 0)
+        return jsonOf("package" to pkg, "app" to Nixin.appLabel(pkg), "text" to sb.toString().take(max).trimEnd())
+    }
+
+    /** Scroll the main list until [text] is visible (for long settings pages, chats, menus). */
+    suspend fun scrollTo(params: JsonObject): JsonObject {
+        val svc = service()
+        guardScreen(svc)
+        val q = params.reqStr("text")
+        val forward = (params.str("direction") ?: "down") == "down"
+        val maxScrolls = (params.int("maxScrolls") ?: 10).coerceIn(1, 25)
+        for (i in 0..maxScrolls) {
+            val root = svc.appRoot() ?: fail(ErrorCode.FAILED, "No active window")
+            if (root.findAccessibilityNodeInfosByText(q).any { it.isVisibleToUser }) return jsonOf("found" to true, "scrolls" to i)
+            if (i == maxScrolls) break
+            val list = largestScrollable(root) ?: fail(ErrorCode.NOT_FOUND, "'$q' is not on screen and nothing scrolls")
+            val moved = list.performAction(if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD)
+            if (!moved) break // reached the end
+            delay(450)
+        }
+        fail(ErrorCode.NOT_FOUND, "'$q' not found after scrolling")
+    }
+
     /** Invalidate element ids after a UI-changing action done outside the agent flow. */
     fun invalidate() { latest = null }
 }
