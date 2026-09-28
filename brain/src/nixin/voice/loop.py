@@ -88,6 +88,7 @@ class VoiceLoop:
             return
         self._listening = True
         self._wake_pause.set()
+        reply = ""
         try:
             self.speaker.stop()
             self.bus.emit("listening", on=True, source=source)
@@ -109,10 +110,41 @@ class VoiceLoop:
             if tr.confidence is not None and tr.confidence < LOW_CONFIDENCE:
                 await self.speaker.say("Theek se samajh nahi aaya, dobara bolo.")
                 return
-            await self.app.brain.handle(tr.text, source=source)
+            reply = await self.app.brain.handle(tr.text, source=source)
         finally:
             self._listening = False
             self._wake_pause.clear()
+        await self._follow_up(reply, source)
+
+    async def _follow_up(self, reply: str, source: str, rounds: int = 3) -> None:
+        """When Nixin ends with a question ("Kitne baje ka alarm lagaun?"), listen again without the hotkey."""
+        secs = self.cfg.voice.follow_up_seconds
+        while rounds > 0 and secs > 0 and reply and reply.rstrip().endswith("?") and not self.app.gate.pending:
+            rounds -= 1
+            await self.speaker.wait_idle()
+            if self._listening:
+                return
+            self._listening = True
+            self._wake_pause.set()
+            try:
+                self.bus.emit("listening", on=True, source="follow_up")
+                wav = await asyncio.to_thread(self.recorder.record, VadConfig(
+                    max_seconds=self.cfg.voice.max_record_seconds, silence_seconds=self.cfg.voice.silence_seconds,
+                    start_timeout=secs))
+                self.bus.emit("listening", on=False)
+                if not wav:
+                    return
+                tr = await self.stt.transcribe(wav)
+                if not tr.text or (tr.confidence is not None and tr.confidence < LOW_CONFIDENCE):
+                    return
+                self.bus.emit("heard", text=tr.text, confidence=tr.confidence, engine=tr.engine, followUp=True)
+                reply = await self.app.brain.handle(tr.text, source=source)
+            except Exception as e:  # noqa: BLE001
+                self.bus.emit("log", level="warning", msg=f"Follow-up listening failed: {e}")
+                return
+            finally:
+                self._listening = False
+                self._wake_pause.clear()
 
     async def listen_once(self, max_seconds: float) -> str | None:
         """Short capture used for yes/no confirmations."""

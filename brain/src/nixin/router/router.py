@@ -9,22 +9,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 
+from nixin.router import rules_v2 as v2
+from nixin.router.intent import Intent
 from nixin.router.normalize import clean, has_devanagari, strip_wake
 from nixin.router.timeparse import parse_clock, parse_duration
-
-
-@dataclass
-class Intent:
-    kind: str
-    params: dict = field(default_factory=dict)
-    source_text: str = ""
-
-    @property
-    def external(self) -> bool:
-        return self.kind in ("message", "call")
 
 
 @dataclass
@@ -124,7 +115,7 @@ def _r_message(c: str, orig: str, now: datetime) -> Intent | None:
 
 def _r_call(c: str, orig: str, now: datetime) -> Intent | None:
     pats = [
-        rf"^(?P<who>.+?)\s+ko\s+(?:call|phone|dial|ring)\s*(?:{_DO}|lagao|laga|laga do|lagado|milao|mila|mila do|kariye)?$",
+        rf"^(?P<who>.+?)\s+ko\s+(?:bhi\s+)?(?:call|phone|dial|ring)\s*(?:bhi\s+)?(?:{_DO}|lagao|laga|laga do|lagado|milao|mila|mila do|kariye)?$",
         r"^(?:call|phone|dial)\s+(?:karo|lagao|laga|kar)\s+(?P<who>.+)$",
         r"^(?:call|dial|ring)\s+(?P<who>.+?)(?:\s+(?:on|pe)\s+(?:phone|mobile))?$",
     ]
@@ -154,6 +145,10 @@ def _r_alarm(c: str, orig: str, now: datetime) -> Intent | None:
     if remind:
         m = re.search(r"\b(?:ki|that|to|ke liye)\s+(.+)$", strip_wake(orig), flags=re.I)
         label = m.group(1).strip()[:80] if m else "Reminder"
+    days = v2.recurring_alarm_days(c)
+    if days:
+        return Intent("alarm", {"hour": v2.habit_hour(ct, c), "minute": ct.minute, "day_hint": None, "label": label,
+                                "days": days}, orig)
     return Intent("alarm", {"hour": ct.hour, "minute": ct.minute, "day_hint": ct.day_hint, "label": label}, orig)
 
 
@@ -342,6 +337,10 @@ def _r_media(c: str, orig: str, now: datetime) -> Intent | None:
         return Intent("phone", {"method": "media.control", "params": {"action": "next"}}, orig)
     if re.match(rf"^(?:previous|prev|pichla|pichle|pehle wala|peeche wala)(?:\s+{thing})?(?:\s+(?:chalao|chala|lagao|play karo|{_DO}))?$", c):
         return Intent("phone", {"method": "media.control", "params": {"action": "previous"}}, orig)
+    if re.match(rf"^(?:{thing}\s+)?(?:aage|forward|fast forward|skip ahead)(?:\s+(?:karo|kar do|badhao|badha do|10 second))?$", c):
+        return Intent("phone", {"method": "media.control", "params": {"action": "seek_forward"}}, orig)
+    if re.match(rf"^(?:{thing}\s+)?(?:rewind|thoda peeche|peeche karo|10 second peeche)(?:\s+(?:karo|kar do))?$", c) and c not in ("peeche karo",):
+        return Intent("phone", {"method": "media.control", "params": {"action": "seek_back"}}, orig)
     if re.match(rf"^(?:pause|resume|play)(?:\s+(?:the\s+)?{thing})?(?:\s+{_DO})?$", c):
         action = "pause" if c.startswith("pause") else "play"
         return Intent("phone", {"method": "media.control", "params": {"action": action}}, orig)
@@ -419,10 +418,16 @@ def _r_open_app(c: str, orig: str, now: datetime) -> Intent | None:
 
 
 RULES: list[Rule] = [
-    _r_cancel, _r_chat, _r_remember, _r_message, _r_alarm, _r_timer, _r_call, _r_search, _r_notifications,
+    _r_cancel, _r_chat, _r_remember, *v2.RULES_V2_EARLY, _r_message, _r_alarm, _r_timer, *v2.RULES_V2_MID, _r_call,
+    *v2.RULES_V2_LATE, _r_search, *v2.RULES_V2_INFO, _r_notifications, *v2.RULES_V2_DEVICE,
     _r_volume, _r_torch, _r_brightness, _r_ringer_dnd, _r_toggle, _r_media, _r_global, _r_status, _r_open_app,
 ]
-_CONSUMING = {"message", "remember", "search", "navigate", "alarm", "agent"}
+_CONSUMING = {"message", "remember", "search", "navigate", "alarm", "agent", "routine_add", "reminder", "notif_reply",
+              "skill_teach", "clarify"}
+
+
+def _consumes(it: Intent) -> bool:
+    return it.kind in _CONSUMING or (it.kind == "pc" and it.params.get("action") == "type")
 _SPLIT = re.compile(r"\s+(?:aur phir|aur fir|and then|uske baad|iske baad|fir|phir|then|and|aur|,)\s+", re.I)
 
 
@@ -445,7 +450,7 @@ def route(text: str, now: datetime | None = None) -> RouteResult:
         return RouteResult(None, cleaned)
 
     whole = _route_one(orig, now)
-    if whole is not None and (whole.kind in _CONSUMING or not _SPLIT.search(orig)):
+    if whole is not None and (_consumes(whole) or not _SPLIT.search(orig)):
         return RouteResult([whole], cleaned)
 
     # multi-part: "torch on karo aur volume full kar do", "Instagram khol aur latest notification padh"

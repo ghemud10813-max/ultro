@@ -83,10 +83,25 @@ class SimPhone:
     ])
     notifications: list[dict] = field(default_factory=lambda: [
         {"key": "n1", "package": "com.instagram.android", "app": "Instagram", "title": "priya_k",
-         "text": "liked your photo", "time": int(time.time() * 1000) - 60_000},
+         "text": "liked your photo", "time": int(time.time() * 1000) - 60_000, "canReply": False},
         {"key": "n2", "package": "com.whatsapp", "app": "WhatsApp", "title": "Mummy", "text": "Khana kha liya?",
-         "time": int(time.time() * 1000) - 300_000},
+         "time": int(time.time() * 1000) - 300_000, "canReply": True},
     ])
+    # v2 state
+    ringing: bool = False
+    location: tuple[float, float] = (28.6139, 77.2090)
+    clipboard: str = ""
+    files: dict = field(default_factory=dict)  # name -> bytes pushed from the PC
+    wallpaper: bytes | None = None
+    system: dict = field(default_factory=lambda: {"auto_rotate": True, "screen_timeout": 30, "haptics": True})
+    call_state: str = "idle"  # idle | ringing | active
+    speaker: bool = False
+    mic_muted: bool = False
+    notif_replies: list[dict] = field(default_factory=list)
+    nixin_notifs: list[dict] = field(default_factory=list)
+    recording: str | None = None
+    rec_steps: list[dict] = field(default_factory=list)
+    _incoming_files: dict = field(default_factory=dict)
     alarms: list[dict] = field(default_factory=list)
     timers: list[dict] = field(default_factory=list)
     calls: list[str] = field(default_factory=list)
@@ -229,6 +244,43 @@ class SimPhone:
         self.media_state = "playing"
         self.go("yt_player")
 
+    # ------------------------------------------------------------------ "the user" doing things (teach mode)
+    def _rec(self, step: dict) -> None:
+        if self.recording is not None:
+            self.rec_steps.append({**step, "package": self.foreground_package()})
+
+    def user_open(self, package: str) -> None:
+        self.open_package(package)
+        self._rec({"a": "open", "package": package, "label": self.app_label(package)})
+
+    def user_tap(self, label: str) -> None:
+        self.snapshot()
+        for e in self._snap_map.values():
+            if label.lower() in f"{e.text or ''} {e.desc or ''}".lower():
+                self._rec({"a": "tap", "text": e.text, "desc": e.desc, "res": e.res, "b": list(e.b)})
+                if e.on_tap:
+                    e.on_tap(self)
+                elif "edit" in e.flags:
+                    self.focused = e.key
+                return
+        raise LookupError(label)
+
+    def user_type(self, text: str) -> None:
+        self.snapshot()
+        e = next((x for x in self._snap_map.values() if "edit" in x.flags), None)
+        if e is None:
+            raise LookupError("no text field")
+        self.focused = e.key
+        if e.key == "wa_entry":
+            self.compose_text = text
+        elif e.key in ("wa_search", "yt_search"):
+            self.search_query = text
+        self._rec({"a": "type", "text": text, "res": e.res, "hint": e.hint})
+
+    def screen_text(self) -> str:
+        scr = self.screen()
+        return "\n".join(t for e in scr.elements for t in (e.text or e.desc,) if t)
+
     # ------------------------------------------------------------------ snapshot
     def snapshot(self, max_elements: int = 150) -> dict:
         scr = self.screen()
@@ -261,10 +313,10 @@ class SimPhone:
     async def handle(self, method: str, p: dict, meta: dict) -> dict:
         self.history.append(method)
         await asyncio.sleep(0.005)
-        if self.stopped and method not in ("device.status", "app.list"):
+        if self.stopped and method not in ("device.status", "app.list", "device.info", "rec.stop"):
             raise SimError("policy.stopped")
         fg = self.foreground_package()
-        if method.startswith("ui.") or method == "screen.capture":
+        if method.startswith("ui.") or method in ("screen.capture",):
             if self.locked:
                 raise SimError("device.locked")
             if fg in BLOCKED:
@@ -401,6 +453,109 @@ class SimPhone:
             case "notif.list":
                 items = [n for n in self.notifications if not p.get("package") or n["package"] == p["package"]]
                 return {"notifications": items[: p.get("limit", 5)]}
+            case "notif.reply":
+                if not meta.get("confirmed"):
+                    raise SimError("policy.confirmation_required")
+                n = next((x for x in self.notifications if x["key"] == p["key"]), None)
+                if n is None or not n.get("canReply"):
+                    raise SimError("target.not_found", "notification has no reply action")
+                self.notif_replies.append({"key": p["key"], "title": n["title"], "app": n["app"], "text": p["text"]})
+                self.notifications = [x for x in self.notifications if x["key"] != p["key"]]
+                return {"sent": True}
+            case "notif.dismiss":
+                before = len(self.notifications)
+                if p.get("all"):
+                    self.notifications = []
+                else:
+                    self.notifications = [x for x in self.notifications if x["key"] != p.get("key")]
+                return {"dismissed": before - len(self.notifications)}
+            case "notif.open":
+                n = next((x for x in self.notifications if x["key"] == p["key"]), None)
+                if n is None:
+                    raise SimError("target.not_found")
+                self.open_package(n["package"])
+                return {"opened": True}
+            case "device.info":
+                return {"manufacturer": "Nixin", "model": "Simulator", "android": "15", "sdk": 35,
+                        "storage": {"freeBytes": 42 * 1024 ** 3, "totalBytes": 128 * 1024 ** 3},
+                        "ram": {"availBytes": 3 * 1024 ** 3, "totalBytes": 8 * 1024 ** 3}, "uptimeMs": 3_600_000,
+                        "battery": {"level": self.battery, "health": "good", "temperatureC": 31.5, "charging": False},
+                        "network": {"type": "wifi" if self.wifi else "cellular", "ssid": "HomeWiFi" if self.wifi else None},
+                        "screen": {"timeoutMs": self.system["screen_timeout"] * 1000, "autoRotate": self.system["auto_rotate"]}}
+            case "device.ring":
+                self.ringing = not p.get("stop", False)
+                return {"ringing": self.ringing, "seconds": p.get("seconds", 30)}
+            case "device.location":
+                return {"lat": self.location[0], "lon": self.location[1], "accuracy": 18.0, "provider": "fused",
+                        "time": int(time.time() * 1000)}
+            case "device.setting":
+                self.system[p["name"]] = p["value"]
+                return {"name": p["name"], "value": p["value"]}
+            case "device.vibrate":
+                return {"ms": p.get("ms", 500)}
+            case "device.wallpaper":
+                self.wallpaper = base64.b64decode(p["data"])
+                return {"set": p.get("target", "both")}
+            case "clipboard.set":
+                self.clipboard = p["text"]
+                return {"ok": True}
+            case "clipboard.get":
+                return {"text": self.clipboard}
+            case "file.push":
+                buf = self._incoming_files.setdefault(p["transferId"], [])
+                if p["index"] != len(buf):
+                    self._incoming_files.pop(p["transferId"], None)
+                    raise SimError("bad_request", "chunk out of order")
+                buf.append(base64.b64decode(p["data"]))
+                if p["index"] + 1 == p["total"]:
+                    self.files[p["name"]] = b"".join(self._incoming_files.pop(p["transferId"]))
+                    return {"saved": True, "path": f"Download/Nixin/{p['name']}"}
+                return {"received": p["index"] + 1}
+            case "media.now_playing":
+                if self.media_state not in ("playing", "paused") or not self.search_query:
+                    return {}
+                return {"title": self.search_query, "artist": "Sim Artist", "app": "YouTube",
+                        "package": "com.google.android.youtube", "state": self.media_state}
+            case "call.control":
+                a = p["action"]
+                if a in ("answer", "end") and self.call_state == "idle":
+                    raise SimError("action.failed", "No call in progress")
+                if a == "answer":
+                    self.call_state = "active"
+                elif a == "end":
+                    self.call_state = "idle"
+                elif a.startswith("speaker"):
+                    self.speaker = a == "speaker_on"
+                else:
+                    self.mic_muted = a == "mute"
+                return {"action": a, "state": self.call_state}
+            case "usage.stats":
+                apps = [{"package": "com.instagram.android", "label": "Instagram", "ms": 65 * 60_000},
+                        {"package": "com.google.android.youtube", "label": "YouTube", "ms": 48 * 60_000},
+                        {"package": "com.whatsapp", "label": "WhatsApp", "ms": 30 * 60_000}]
+                return {"period": p.get("period", "today"), "totalMs": 192 * 60_000, "unlocks": 57, "apps": apps[: p.get("limit", 8)]}
+            case "ui.text":
+                if self.locked:
+                    raise SimError("device.locked")
+                scr = self.screen()
+                return {"package": scr.package, "app": scr.app, "text": self.screen_text()[: p.get("maxChars", 6000)]}
+            case "ui.scroll_to":
+                if p["text"].lower() in self.screen_text().lower():
+                    return {"found": True, "scrolls": 0}
+                raise SimError("target.not_found", f"'{p['text']}' not found")
+            case "rec.start":
+                self.recording = p.get("name") or "skill"
+                self.rec_steps = []
+                return {"recording": True}
+            case "rec.stop":
+                steps, name = self.rec_steps, self.recording
+                self.recording, self.rec_steps = None, []
+                if p.get("cancel"):
+                    return {"cancelled": True, "steps": []}
+                return {"name": name, "steps": steps, "package": steps[0]["package"] if steps else None}
+            case "nixin.notify":
+                self.nixin_notifs.append(dict(p))
+                return {"shown": True}
             case "ui.snapshot":
                 return self.snapshot(p.get("maxElements", 150))
             case "ui.tap" | "ui.long_press":

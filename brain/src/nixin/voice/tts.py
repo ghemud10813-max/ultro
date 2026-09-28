@@ -142,6 +142,12 @@ class Speaker:
                 except Exception:  # noqa: BLE001 — try next engine
                     continue
 
+    async def wait_idle(self, settle: float = 0.15) -> None:
+        """Wait until queued speech has finished (used before listening for a follow-up)."""
+        await asyncio.sleep(settle)
+        async with self._lock:
+            pass
+
     def stop(self) -> None:
         from nixin.voice.audio import stop_playback
 

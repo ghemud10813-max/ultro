@@ -161,6 +161,19 @@ class PhoneClient:
     async def send_event(self, name: str, data: dict) -> None:
         await self.send({"t": "event", "name": name, "data": data})
 
+    async def share(self, text: str, subject: str | None = None) -> None:
+        await self.send({"t": "share", "text": text, **({"subject": subject} if subject else {})})
+
+    async def send_file(self, name: str, data: bytes, mime: str = "application/octet-stream", chunk: int = 300_000) -> str:
+        import base64
+
+        tid = uuid.uuid4().hex
+        total = max(1, -(-len(data) // chunk))
+        for i in range(total):
+            await self.send({"t": "file", "transferId": tid, "name": name, "mime": mime, "index": i, "total": total,
+                             "data": base64.b64encode(data[i * chunk:(i + 1) * chunk]).decode("ascii")})
+        return tid
+
     async def answer(self, ask_id: str, value: str) -> None:
         await self.send({"t": "answer", "id": ask_id, "value": value})
 

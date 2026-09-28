@@ -170,9 +170,12 @@ def test_alarm_needs_time():
     assert it.kind == "clarify"
 
 
-def test_reminder_becomes_labelled_alarm():
+def test_reminder_becomes_nixin_reminder():
+    from datetime import datetime
+
     it = one("shaam 5 baje yaad dilana ki doctor ke paas jana hai")
-    assert it.kind == "alarm" and it.params["hour"] == 17 and "doctor" in it.params["label"]
+    when = datetime.fromtimestamp(it.params["when"])
+    assert it.kind == "reminder" and (when.hour, when.minute) == (17, 0) and it.params["text"] == "doctor ke paas jana hai"
 
 
 @pytest.mark.parametrize("text,secs", [("5 minute ka timer lagao", 300), ("set a timer for 90 seconds", 90), ("dedh ghante ka timer", 5400)])
@@ -242,7 +245,7 @@ def test_message_body_with_aur_not_split():
 
 @pytest.mark.parametrize("text", [
     "Instagram pe sabse latest post like karo",
-    "mere last 3 whatsapp messages summarize karo",
+    "youtube ki watch history clear karo",
     "zomato se ek pizza order kar do",
     "settings mein jaake dark mode on karo",
     "what's the capital of France",

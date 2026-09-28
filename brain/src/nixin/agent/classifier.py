@@ -8,7 +8,7 @@ same executor (and the same safety checks).
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from nixin.agent import prompts
 from nixin.agent.tools import _fn
@@ -55,6 +55,44 @@ CLASSIFIER_TOOLS: list[dict] = [
     _fn("remember", "Remember a fact the user tells you.", {"fact": {"type": "string"}}, ["fact"]),
     _fn("set_nickname", "Save a contact nickname (e.g. 'bhai' = 'Rohan Sharma').", {
         "alias": {"type": "string"}, "contact_name": {"type": "string"}}, ["alias", "contact_name"]),
+    _fn("pc", "Control the user's PC/laptop (not the phone).", {
+        "action": {"type": "string", "enum": ["lock", "sleep", "shutdown", "restart", "cancel_shutdown", "volume", "media", "open",
+                                              "search", "screenshot", "type", "status", "clipboard_to_phone", "clipboard_from_phone"]},
+        "target": {"type": "string", "description": "app/site to open"}, "query": {"type": "string"},
+        "text": {"type": "string", "description": "text to type"},
+        "mode": {"type": "string", "enum": ["up", "down", "set", "mute", "unmute", "max", "toggle", "next", "previous"]},
+        "percent": {"type": "integer", "minimum": 0, "maximum": 100}}, ["action"]),
+    _fn("weather", "Weather now/today/tomorrow. city empty = user's location.", {
+        "city": {"type": "string"}, "when": {"type": "string", "enum": ["now", "today", "tomorrow"]},
+        "rain": {"type": "boolean", "description": "the user asks specifically about rain"}}),
+    _fn("briefing", "Daily briefing: time, weather, battery, notifications, screen time, reminders.", {}),
+    _fn("reminder", "Remind the user later (spoken + notification). Give minutes_from_now OR hour+minute.", {
+        "text": {"type": "string"}, "minutes_from_now": {"type": "integer", "minimum": 1},
+        "hour": {"type": "integer", "minimum": 0, "maximum": 23}, "minute": {"type": "integer", "minimum": 0, "maximum": 59},
+        "tomorrow": {"type": "boolean"}}, ["text"]),
+    _fn("create_routine", "Automation: at a daily time (at=HH:MM, days 1=Mon..7=Sun) or on a phone event, run commands. "
+        "actions = Nixin commands in the user's words, or 'say: <text>' to announce (placeholders {level} {title} {app} {text} {caller}).", {
+        "name": {"type": "string"}, "at": {"type": "string", "pattern": "^\\d{2}:\\d{2}$"},
+        "days": {"type": "array", "items": {"type": "integer", "minimum": 1, "maximum": 7}},
+        "event": {"type": "string", "enum": ["battery_low", "battery_full", "charging", "unplugged", "notification", "call_incoming",
+                                             "unlocked", "wifi_connected", "wifi_disconnected", "phone_connected"]},
+        "below": {"type": "integer"}, "contains": {"type": "string", "description": "sender/caller name filter"},
+        "app": {"type": "string"}, "actions": {"type": "array", "items": {"type": "string"}}}, ["actions"]),
+    _fn("phone_extra", "Find/ring the phone, its location, call control, now playing, screen time, device info, system settings.", {
+        "action": {"type": "string", "enum": ["find_phone", "stop_ringing", "location", "answer_call", "end_call", "speaker_on",
+                                              "speaker_off", "mute_mic", "unmute_mic", "now_playing", "screen_time_today",
+                                              "screen_time_yesterday", "screen_time_week", "storage", "device_info",
+                                              "auto_rotate_on", "auto_rotate_off", "screen_timeout"]},
+        "seconds": {"type": "integer", "description": "screen_timeout value"}}, ["action"]),
+    _fn("notification_action", "Reply to / summarise / clear / open notifications. reply uses the notification's reply action.", {
+        "action": {"type": "string", "enum": ["reply", "summarize", "clear", "open"]},
+        "who": {"type": "string"}, "app": {"type": "string"}, "text": {"type": "string", "description": "reply text, exactly"}},
+        ["action"]),
+    _fn("read_screen", "Read the phone screen aloud, summarise it, or answer a question about what is on it.", {
+        "mode": {"type": "string", "enum": ["read", "summary", "ask"]}, "question": {"type": "string"}}, ["mode"]),
+    _fn("skill", "Teach mode: learn a task by watching the user, save/cancel the recording, run/list learned skills.", {
+        "action": {"type": "string", "enum": ["teach", "save", "cancel", "run", "list"]}, "name": {"type": "string"},
+        "arg": {"type": "string", "description": "text to type when running"}}, ["action"]),
     _fn("phone_task", "Multi-step task that needs operating app screens. goal = complete English instruction.", {
         "goal": {"type": "string"}}, ["goal"]),
     _fn("reply", "Answer/chat without touching the phone.", {"text": {"type": "string"}}, ["text"]),
@@ -121,6 +159,44 @@ def tool_to_intent(name: str, a: dict, text: str) -> Intent | None:
             return Intent("remember", {"fact": a["fact"]}, text)
         case "set_nickname":
             return Intent("alias", {"alias": a["alias"], "name": a["contact_name"]}, text)
+        case "pc":
+            p = {k: a[k] for k in ("action", "target", "query", "text", "mode", "percent") if a.get(k) is not None}
+            return Intent("pc", p, text)
+        case "weather":
+            return Intent("weather", {"city": a.get("city") or None, "when": a.get("when") or "now",
+                                      "question": "rain" if a.get("rain") else None}, text)
+        case "briefing":
+            return Intent("briefing", {}, text)
+        case "reminder":
+            now = datetime.now()
+            if a.get("minutes_from_now"):
+                when = now + timedelta(minutes=int(a["minutes_from_now"]))
+            elif a.get("hour") is not None:
+                when = now.replace(hour=int(a["hour"]), minute=int(a.get("minute") or 0), second=0, microsecond=0)
+                if a.get("tomorrow") or when <= now:
+                    when += timedelta(days=1)
+            else:
+                return Intent("clarify", {"question": "Kab yaad dilaun?"}, text)
+            return Intent("reminder", {"text": a["text"], "when": when.timestamp()}, text)
+        case "create_routine":
+            if a.get("event"):
+                trig = {"type": "event", "event": a["event"], **{k: a[k] for k in ("below", "contains", "app") if a.get(k)}}
+            elif a.get("at"):
+                trig = {"type": "time", "at": a["at"], "days": a.get("days") or []}
+            else:
+                return Intent("clarify", {"question": "Kab chalana hai — kis time ya kis event pe?"}, text)
+            return Intent("routine_add", {"name": a.get("name") or "", "trigger": trig, "actions": list(a["actions"])}, text)
+        case "phone_extra":
+            return _extra_intent(a, text)
+        case "notification_action":
+            kind = {"reply": "notif_reply", "summarize": "notif_summary", "clear": "notif_clear", "open": "notif_open"}[a["action"]]
+            return Intent(kind, {k: a.get(k) for k in ("who", "app", "text")}, text)
+        case "read_screen":
+            return Intent("screen_read", {"mode": a.get("mode") or "summary", "question": a.get("question")}, text)
+        case "skill":
+            kind = {"teach": "skill_teach", "save": "skill_save", "cancel": "skill_cancel", "run": "skill_run",
+                    "list": "skill_list"}[a["action"]]
+            return Intent(kind, {"name": a.get("name") or "", "arg": a.get("arg")}, text)
         case "phone_task":
             return Intent("agent", {"goal": a["goal"]}, text)
         case "reply":
@@ -128,6 +204,25 @@ def tool_to_intent(name: str, a: dict, text: str) -> Intent | None:
         case "ask":
             return Intent("clarify", {"question": a["question"]}, text)
     return None
+
+
+def _extra_intent(a: dict, text: str) -> Intent:
+    act = a["action"]
+    simple = {
+        "find_phone": ("find_phone", {}), "stop_ringing": ("find_phone", {"stop": True}), "location": ("locate_phone", {}),
+        "answer_call": ("call_control", {"action": "answer"}), "end_call": ("call_control", {"action": "end"}),
+        "speaker_on": ("call_control", {"action": "speaker_on"}), "speaker_off": ("call_control", {"action": "speaker_off"}),
+        "mute_mic": ("call_control", {"action": "mute"}), "unmute_mic": ("call_control", {"action": "unmute"}),
+        "now_playing": ("now_playing", {}), "screen_time_today": ("usage", {"period": "today"}),
+        "screen_time_yesterday": ("usage", {"period": "yesterday"}), "screen_time_week": ("usage", {"period": "week"}),
+        "storage": ("device_info", {"what": "storage"}), "device_info": ("device_info", {"what": "all"}),
+        "auto_rotate_on": ("device_setting", {"name": "auto_rotate", "value": True}),
+        "auto_rotate_off": ("device_setting", {"name": "auto_rotate", "value": False}),
+    }
+    if act == "screen_timeout":
+        return Intent("device_setting", {"name": "screen_timeout", "value": max(15, min(1800, int(a.get("seconds") or 60)))}, text)
+    kind, params = simple[act]
+    return Intent(kind, dict(params), text)
 
 
 class Classifier:

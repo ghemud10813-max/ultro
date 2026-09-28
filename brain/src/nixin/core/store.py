@@ -85,6 +85,18 @@ CREATE TABLE IF NOT EXISTS conversation (
     text TEXT NOT NULL,
     task_id TEXT
 );
+CREATE TABLE IF NOT EXISTS routines (
+    id TEXT PRIMARY KEY,
+    data TEXT NOT NULL,
+    updated_at REAL NOT NULL
+);
+CREATE TABLE IF NOT EXISTS skills (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    data TEXT NOT NULL,
+    updated_at REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS settings (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
@@ -260,6 +272,27 @@ class Store:
 
     def all_settings(self) -> dict[str, Any]:
         return {r["key"]: json.loads(r["value"]) for r in self._all("SELECT key,value FROM settings")}
+
+    # ------------------------------------------------------------------ routines / skills (JSON documents)
+    def save_routine(self, rid: str, data: dict) -> None:
+        self._exec("INSERT OR REPLACE INTO routines(id,data,updated_at) VALUES(?,?,?)",
+                   (rid, json.dumps(data, ensure_ascii=False), time.time()))
+
+    def list_routines(self) -> list[dict]:
+        return [json.loads(r["data"]) for r in self._all("SELECT data FROM routines ORDER BY updated_at")]
+
+    def delete_routine(self, rid: str) -> bool:
+        return self._exec("DELETE FROM routines WHERE id=?", (rid,)).rowcount > 0
+
+    def save_skill(self, sid: str, name: str, kind: str, data: dict) -> None:
+        self._exec("INSERT OR REPLACE INTO skills(id,name,kind,data,updated_at) VALUES(?,?,?,?,?)",
+                   (sid, name, kind, json.dumps(data, ensure_ascii=False), time.time()))
+
+    def list_skills(self) -> list[dict]:
+        return [json.loads(r["data"]) for r in self._all("SELECT data FROM skills ORDER BY updated_at DESC")]
+
+    def delete_skill(self, sid: str) -> bool:
+        return self._exec("DELETE FROM skills WHERE id=?", (sid,)).rowcount > 0
 
     # ------------------------------------------------------------------ retention
     def purge_older_than(self, days: int = 30) -> None:

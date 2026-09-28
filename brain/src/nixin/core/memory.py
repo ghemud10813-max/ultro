@@ -120,9 +120,46 @@ def match_app(name: str, apps: list[dict], aliases: dict[str, str] | None = None
     return best if best and best.score >= 0.8 else None
 
 
+_PRONOUN_TARGET = re.compile(r"\b(?:usko|usse|unko|unhe|unhein|unse|isko|inko|usi ko|unhi ko|use)\b(?=\s+(?:bhi\s+)?"
+                             r"(?:call|phone|fone|message|msg|sms|whatsapp|bol|bolo|keh|kaho|bata|batao|likh|bhej|reply|ko\b))",
+                             re.I)
+_PRONOUN_KO = re.compile(r"\b(?:usko|unko|unhe|unhein|isko|inko|usi ko|unhi ko)\b", re.I)
+_SAME_MESSAGE = re.compile(r"^(?:wahi|wohi|vahi|yehi|same|woh hi|vo hi)\s+(?:message|msg|baat|text)\s+(?P<who>.+?)\s+ko\s*(?:bhi\s*)?"
+                           r"(?:bhejo|bhej do|bhej de|bol do|bolo|forward karo|forward kar do|send karo|send kar do|bhi)?$", re.I)
+
+
 class Memory:
     def __init__(self, store: Store) -> None:
         self.store = store
+        # short-term context for follow-ups: "usko call karo", "wahi message Priya ko bhejo"
+        self.last: dict = {}
+
+    def note_contact(self, name: str, number: str | None = None) -> None:
+        self.last["contact"] = name
+        if number:
+            self.last["number"] = number
+
+    def note_message(self, body: str, channel: str | None = None) -> None:
+        self.last["message"] = body
+        if channel:
+            self.last["channel"] = channel
+
+    def expand_references(self, text: str) -> str:
+        """Resolve pronouns to the last contact and "same message" to the last message body."""
+        m = _SAME_MESSAGE.match(text.strip())
+        if m and self.last.get("message"):
+            chan = self.last.get("channel") or ""
+            prefix = "WhatsApp pe " if chan == "whatsapp" else ("SMS pe " if chan == "sms" else "")
+            return f"{prefix}{m.group('who').strip()} ko bolo ki {self.last['message']}"
+        who = self.last.get("contact")
+        if not who:
+            return text
+        if _PRONOUN_TARGET.search(text):
+            text = _PRONOUN_KO.sub(f"{who} ko", text)
+            text = re.sub(r"\buse\b(?=\s+(?:bhi\s+)?(?:call|phone|message|msg|sms|whatsapp|bol|bata|bhej|reply))",
+                          f"{who} ko", text, flags=re.I)
+            text = re.sub(r"\b(?:usse|unse)\b", f"{who} ko", text, flags=re.I)
+        return text
 
     # contacts
     def contact_alias(self, who: str) -> dict | None:

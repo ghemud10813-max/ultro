@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 
 # Where a command came from. Voice sources can mis-hear, so they never auto-approve
 # external actions (messages, calls) under the "smart" confirmation policy.
-SOURCES = ("typed", "dashboard", "phone_text", "phone_voice", "voice", "wake_word", "api")
+SOURCES = ("typed", "dashboard", "phone_text", "phone_voice", "voice", "wake_word", "api", "routine", "plugin")
 TRUSTED_TEXT_SOURCES = {"typed", "dashboard", "phone_text", "api"}
 
 
@@ -23,6 +23,9 @@ class TaskContext:
     lang: str = "hinglish"
     cancelled: asyncio.Event = field(default_factory=asyncio.Event)
     notes: list[str] = field(default_factory=list)
+    trusted: bool = False  # routines the user marked trusted may send messages without asking
+    event: dict = field(default_factory=dict)  # data of the event that fired a routine
+    quiet: bool = False  # routine/plugin sub-command: reply is returned, not spoken or mirrored
 
     @property
     def is_cancelled(self) -> bool:

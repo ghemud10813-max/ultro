@@ -68,12 +68,18 @@ class NixinApp:
         self.phone = PhoneLink(self.bus, self.store)
         self.link = LinkServer(self.identity, self.pairing, self.phone, self.store, self.bus,
                                cfg.link.heartbeat_seconds, cfg.blocklist.extra_packages)
-        self.gateway = Gateway(cfg, self.store, self.bus, http)
+        self.http = http or httpx.AsyncClient(timeout=20)
+        self.gateway = Gateway(cfg, self.store, self.bus, self.http)
         self.memory = Memory(self.store)
         self.gate = ConfirmationGate(self.bus, cfg.assistant.confirm_timeout_seconds)
         self.adb = AdbPower(cfg.adb, self.bus)
         self.actions = Actions(cfg, self.phone, self.memory, self.gate, self.bus, self.adb)
         self.brain = Brain(cfg, self.store, self.bus, self.phone, self.gateway, self.memory, self.gate, self.actions)
+        self.brain.app = self
+        from nixin.features import install_features
+
+        self.features = install_features(self)
+        self.phone.on_connected = self._on_phone_connected
         self.voice = None
         self.dashboard = None
         self.dashboard_token: str | None = None
@@ -133,6 +139,8 @@ class NixinApp:
                 self.voice = None
                 self.bus.emit("log", level="warning", msg=f"Voice disabled: {e}")
 
+        for f in self.features:
+            await f.start()
         asyncio.create_task(self._probe())
 
     def dashboard_url(self, port: int | None = None) -> str:
@@ -146,7 +154,18 @@ class NixinApp:
         except Exception as e:  # noqa: BLE001
             self.bus.emit("log", level="warning", msg=f"Provider probe failed: {e}")
 
+    async def _on_phone_connected(self) -> None:
+        """Send the phone its quick-action chips (scenes + taught skills)."""
+        chips = [{"label": p["name"], "text": p["phrase"]} for p in self.routines.phrases()]
+        chips += [{"label": s.name, "text": f"{s.name} chalao"} for s in self.skills.list() if s.kind == "taught"]
+        await self.phone.send_message({"t": "scenes", "items": chips[:16]})
+
     async def stop(self) -> None:
+        for f in reversed(getattr(self, "features", [])):
+            try:
+                await f.stop()
+            except Exception:  # noqa: BLE001
+                pass
         if self.voice:
             await self.voice.stop()
         for s in reversed(self._servers):

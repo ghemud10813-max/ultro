@@ -229,8 +229,14 @@ class PhoneAgent:
             return {"history": history, "step": step, "pending": None,
                     "outcome": {"status": "failed", "summary": "Got stuck repeating the same action."}}
 
+        el = None
+        if name in ("tap", "long_press") and args.get("id") is not None:
+            el = find_element(state.get("screen") or {}, int(args["id"]))
         ok, result, fatal = await self._execute(name, args, state, ctx)
-        history.append({"n": step, "tool": name, "args": _safe_args(name, args), "ok": ok, "result": result})
+        entry: dict[str, Any] = {"n": step, "tool": name, "args": _safe_args(name, args), "ok": ok, "result": result}
+        if el:
+            entry["el"] = {k: el[k] for k in ("text", "desc", "res", "role") if el.get(k)}  # lets skills replay it
+        history.append(entry)
         self._emit(ctx, "act", n=step, tool=name, args=_safe_args(name, args), ok=ok, result=result)
         self.store.add_step(ctx.task_id, "act", {"n": step, "tool": name, "ok": ok, "result": result})
         out: dict[str, Any] = {"history": history, "step": step, "pending": None, "last_sig": sig, "repeat_count": repeat,
@@ -341,6 +347,13 @@ class PhoneAgent:
                 o = await self.actions.open_app(ctx, str(args["name"]), origin="agent")
                 await asyncio.sleep(1.5)
                 return o.ok, o.say, None
+            if name == "find_text":
+                res = await call("ui.scroll_to", {"text": str(args["text"])[:120], "direction": args.get("direction") or "down",
+                                                  "maxScrolls": 10}, timeout=30, **kw)
+                return True, f"'{args['text']}' is now visible" + (f" after {res.get('scrolls')} scrolls" if res.get("scrolls") else ""), None
+            if name == "read_screen":
+                res = await call("ui.text", {"maxChars": 3000}, **kw)
+                return True, "SCREEN TEXT: " + " ".join(str(res.get("text") or "").split())[:1500], None
             if name == "wait":
                 await asyncio.sleep(max(0.5, min(5.0, float(args.get("seconds") or 1))))
                 return True, "waited", None

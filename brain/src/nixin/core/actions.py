@@ -59,6 +59,8 @@ class Actions:
         self.gate = gate
         self.bus = bus
         self.adb = adb
+        # v2 feature modules register handlers for their intent kinds here
+        self.handlers: dict = {}
 
     # ------------------------------------------------------------------ helpers
     def _t(self, ctx: TaskContext, key: str, **kw) -> str:
@@ -91,6 +93,8 @@ class Actions:
         mode = self.cfg.assistant.confirm
         if mode == "always" or ctx.source == "wake_word":
             return True
+        if ctx.source in ("routine", "plugin"):
+            return not ctx.trusted
         if not deterministic:
             return True
         if ctx.source in TRUSTED_TEXT_SOURCES:
@@ -111,7 +115,10 @@ class Actions:
     async def run_intent(self, intent: Intent, ctx: TaskContext, *, deterministic: bool = True,
                          origin: str = "router") -> Outcome:
         p = intent.params
+        handler = self.handlers.get(intent.kind)
         try:
+            if handler is not None:
+                return await handler(intent, ctx, deterministic=deterministic, origin=origin)
             match intent.kind:
                 case "phone":
                     return await self.phone_method(ctx, p["method"], p["params"], origin=origin)
@@ -201,6 +208,7 @@ class Actions:
             if e.code in ("target.not_found", "app.not_installed"):
                 return Outcome(False, self._t(ctx, "app_not_found", name=name), code=e.code)
             raise
+        self.memory.last["app"] = res.get("label") or (m.label if m else name)
         return Outcome(True, self._t(ctx, "app_opened", label=res.get("label") or (m.label if m else name)), res)
 
     async def alarm(self, ctx: TaskContext, hour: int, minute: int, day_hint: str | None, label: str | None,
@@ -362,6 +370,7 @@ class Actions:
         refused = await self._confirm_external(ctx, self._t(ctx, "confirm_call", name=name, number=number), deterministic)
         if refused:
             return refused
+        self.memory.note_contact(name, number)
         res = await self.call(ctx, "comm.call", {"number": number}, origin=origin, confirmed=True)
         key = "called" if res.get("mode") == "call" else "dialed"
         return Outcome(True, self._t(ctx, key, name=name), res)
@@ -379,6 +388,8 @@ class Actions:
             return r
         name, number = r
         chan_label = "WhatsApp" if channel == "whatsapp" else "SMS"
+        self.memory.note_contact(name, number)
+        self.memory.note_message(body, channel)
         refused = await self._confirm_external(
             ctx, self._t(ctx, "confirm_message", name=name, channel=chan_label, body=body), deterministic)
         if refused:

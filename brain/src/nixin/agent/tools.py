@@ -42,6 +42,9 @@ PLANNER_TOOLS: list[dict] = [
     _fn("tap_xy", "Tap raw screen coordinates (only when the element is not in SCREEN).",
         {"x": {"type": "integer"}, "y": {"type": "integer"}}, ["x", "y"]),
     _fn("wait", "Wait for the screen to load.", {"seconds": {"type": "number", "minimum": 0.5, "maximum": 5}}, ["seconds"]),
+    _fn("find_text", "Scroll until an element with this text is visible (search long lists/settings).",
+        {"text": {"type": "string"}, "direction": {"type": "string", "enum": ["down", "up"]}}, ["text"]),
+    _fn("read_screen", "Get ALL visible text on the screen in reading order (for reading articles/messages/prices).", {}),
     _fn("look", "Take a screenshot and ask the vision model a question about it (use when SCREEN is empty/unclear).",
         {"question": {"type": "string"}}, ["question"]),
     _fn("send_message", "Send a WhatsApp/SMS message to a contact (verifies the recipient, asks the user).",
@@ -56,7 +59,7 @@ PLANNER_TOOLS: list[dict] = [
     _fn("fail", "Give up with a short reason (after trying alternatives).", {"reason": {"type": "string"}}, ["reason"]),
 ]
 PLANNER_TOOL_NAMES = {t["function"]["name"] for t in PLANNER_TOOLS}
-UI_TOOLS = {"tap", "long_press", "type_text", "scroll", "press", "swipe", "tap_xy", "open_app"}
+UI_TOOLS = {"tap", "long_press", "type_text", "scroll", "press", "swipe", "tap_xy", "open_app", "find_text"}
 TERMINAL_TOOLS = {"done", "fail"}
 
 
@@ -108,6 +111,8 @@ def check_tool(name: str, args: dict, snapshot: dict | None, vision_ready: bool)
                 return ToolCheck(False, f"{name}: {k} must be inside the screen ({w}x{h}).")
     if name == "look" and not vision_ready:
         return ToolCheck(False, "look() is unavailable (vision disabled). Work with SCREEN, scroll, or fail.")
+    if name == "find_text" and not str(args.get("text", "")).strip():
+        return ToolCheck(False, "find_text needs text.")
     if name == "open_app" and not str(args.get("name", "")).strip():
         return ToolCheck(False, "open_app needs a name.")
     if name in ("send_message",) and not (args.get("to") and args.get("text")):

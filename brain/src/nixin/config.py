@@ -63,6 +63,8 @@ class AssistantConfig(BaseModel):
     verify_finish: bool = True
     default_country_code: str = "91"
     history_turns: int = 6
+    city: str = ""  # for weather/briefings; empty = use the phone's location if allowed
+    announce_on: Literal["pc", "phone", "both"] = "both"  # where routine alerts are spoken
 
 
 class PrivacyConfig(BaseModel):
@@ -89,6 +91,7 @@ class VoiceConfig(BaseModel):
     max_record_seconds: float = 12.0
     silence_seconds: float = 1.2
     input_device: str | int | None = None
+    follow_up_seconds: float = 4.0  # after a spoken reply, listen this long for a follow-up (0 = off)
 
 
 class ProviderConfig(BaseModel):
@@ -115,6 +118,29 @@ class AdbConfig(BaseModel):
 
 class BlocklistConfig(BaseModel):
     extra_packages: list[str] = Field(default_factory=list)
+
+
+class BridgeConfig(BaseModel):
+    inbox_dir: str = ""  # default: ~/Nixin Inbox
+    clipboard_on_share: bool = True  # text shared from the phone lands on the PC clipboard
+    open_links: bool = False  # links shared from the phone open in the PC browser
+
+
+class NotificationsConfig(BaseModel):
+    announce: bool = True  # speak notifications from VIP contacts / apps on the PC
+    vip: list[str] = Field(default_factory=list)  # names whose messages are announced, e.g. ["Mummy", "Boss"]
+    announce_apps: list[str] = Field(default_factory=list)  # apps whose notifications are always announced
+    toast_on_pc: bool = True  # show mirrored phone notifications as desktop notifications
+
+
+class RoutinesConfig(BaseModel):
+    enabled: bool = True
+    builtin: bool = True  # install built-in scenes/alerts on first run
+
+
+class PluginsConfig(BaseModel):
+    enabled: bool = True
+    dirs: list[str] = Field(default_factory=list)  # extra plugin folders (the data dir's plugins/ is always used)
 
 
 def _default_providers() -> dict[str, ProviderConfig]:
@@ -199,6 +225,10 @@ class NixinConfig(BaseModel):
     limits: dict[str, LimitConfig] = Field(default_factory=dict)
     adb: AdbConfig = Field(default_factory=AdbConfig)
     blocklist: BlocklistConfig = Field(default_factory=BlocklistConfig)
+    bridge: BridgeConfig = Field(default_factory=BridgeConfig)
+    notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
+    routines: RoutinesConfig = Field(default_factory=RoutinesConfig)
+    plugins: PluginsConfig = Field(default_factory=PluginsConfig)
 
     # set by load_config
     source_path: str | None = None

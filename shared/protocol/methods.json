@@ -410,7 +410,9 @@
               "toggle",
               "next",
               "previous",
-              "stop"
+              "stop",
+              "seek_forward",
+              "seek_back"
             ]
           }
         }
@@ -831,6 +833,404 @@
           }
         }
       }
+    },
+    "device.info": {
+      "risk": "read",
+      "summary": "Storage, RAM, uptime, battery health/temperature, network details, screen settings, Android version.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    "device.ring": {
+      "risk": "local",
+      "summary": "Find my phone: ring at full alarm volume (even on silent), vibrate and flash the torch.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "seconds": {
+            "type": "integer",
+            "minimum": 3,
+            "maximum": 120,
+            "default": 30
+          },
+          "stop": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    "device.location": {
+      "risk": "read",
+      "summary": "Current GPS/network location (needs Location permission).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "timeoutMs": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 30000,
+            "default": 10000
+          }
+        }
+      }
+    },
+    "device.setting": {
+      "risk": "local",
+      "summary": "Change a system setting (needs 'Modify system settings').",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "enum": [
+              "auto_rotate",
+              "screen_timeout",
+              "haptics"
+            ]
+          },
+          "value": {
+            "type": [
+              "boolean",
+              "integer"
+            ]
+          }
+        },
+        "required": [
+          "name",
+          "value"
+        ]
+      }
+    },
+    "device.vibrate": {
+      "risk": "local",
+      "summary": "Vibrate the phone.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ms": {
+            "type": "integer",
+            "minimum": 50,
+            "maximum": 5000,
+            "default": 500
+          }
+        }
+      }
+    },
+    "device.wallpaper": {
+      "risk": "local",
+      "summary": "Set the wallpaper from a JPEG/PNG image.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "type": "string",
+            "maxLength": 12000000
+          },
+          "target": {
+            "enum": [
+              "home",
+              "lock",
+              "both"
+            ],
+            "default": "both"
+          }
+        },
+        "required": [
+          "data"
+        ]
+      }
+    },
+    "clipboard.set": {
+      "risk": "local",
+      "summary": "Put text on the phone clipboard.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 100000
+          }
+        },
+        "required": [
+          "text"
+        ]
+      }
+    },
+    "clipboard.get": {
+      "risk": "read",
+      "summary": "Read the phone clipboard (Android only allows this while Nixin is in the foreground).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    "file.push": {
+      "risk": "local",
+      "summary": "Receive a file chunk from the PC; the last chunk saves it to Downloads/Nixin.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "transferId": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "mime": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 2000
+          },
+          "data": {
+            "type": "string",
+            "maxLength": 800000
+          }
+        },
+        "required": [
+          "transferId",
+          "name",
+          "index",
+          "total",
+          "data"
+        ]
+      }
+    },
+    "notif.reply": {
+      "risk": "external",
+      "summary": "Reply to a notification through its own reply action (WhatsApp, Telegram, SMS...).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 400
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "key",
+          "text"
+        ]
+      }
+    },
+    "notif.dismiss": {
+      "risk": "local",
+      "summary": "Dismiss a notification (or all).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 400
+          },
+          "all": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    "notif.open": {
+      "risk": "nav",
+      "summary": "Open a notification (as if tapped).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "type": "string",
+            "maxLength": 400
+          }
+        },
+        "required": [
+          "key"
+        ]
+      }
+    },
+    "media.now_playing": {
+      "risk": "read",
+      "summary": "What is playing: app, title, artist, state, position (needs notification access).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      }
+    },
+    "call.control": {
+      "risk": "local",
+      "summary": "Answer/end the current call or toggle speaker/mute.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "enum": [
+              "answer",
+              "end",
+              "speaker_on",
+              "speaker_off",
+              "mute",
+              "unmute"
+            ]
+          }
+        },
+        "required": [
+          "action"
+        ]
+      }
+    },
+    "usage.stats": {
+      "risk": "read",
+      "summary": "Screen time per app (needs Usage access).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "period": {
+            "enum": [
+              "today",
+              "yesterday",
+              "week"
+            ],
+            "default": "today"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 30,
+            "default": 8
+          }
+        }
+      }
+    },
+    "ui.text": {
+      "risk": "read",
+      "summary": "All visible text on screen in reading order (passwords excluded).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "maxChars": {
+            "type": "integer",
+            "minimum": 200,
+            "maximum": 20000,
+            "default": 6000
+          }
+        }
+      }
+    },
+    "ui.scroll_to": {
+      "risk": "nav",
+      "summary": "Scroll until an element with this text is visible.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "direction": {
+            "enum": [
+              "down",
+              "up"
+            ],
+            "default": "down"
+          },
+          "maxScrolls": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 25,
+            "default": 10
+          }
+        },
+        "required": [
+          "text"
+        ]
+      }
+    },
+    "rec.start": {
+      "risk": "read",
+      "summary": "Teach mode: start recording the user's taps and typing.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          }
+        }
+      }
+    },
+    "rec.stop": {
+      "risk": "read",
+      "summary": "Teach mode: stop recording and return the steps.",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "cancel": {
+            "type": "boolean",
+            "default": false
+          }
+        }
+      }
+    },
+    "nixin.notify": {
+      "risk": "local",
+      "summary": "Show a notification on the phone (reminders, messages from the PC).",
+      "params": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 120
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 1000
+          },
+          "id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          }
+        },
+        "required": [
+          "title"
+        ]
+      }
     }
   },
   "errors": {
@@ -860,6 +1260,23 @@
     "target.not_scrollable": "Nothing to scroll.",
     "app.not_installed": "App is not installed.",
     "action.failed": "Android refused or failed the action.",
-    "action.uncertain": "The action may have happened but could not be verified. Never retried automatically."
+    "action.uncertain": "The action may have happened but could not be verified. Never retried automatically.",
+    "permission.location": "Grant Nixin location permission (Allow all the time).",
+    "permission.usage": "Grant Nixin Usage access.",
+    "permission.phone": "Grant Nixin permission to answer calls."
+  },
+  "events": {
+    "status": "full device.status payload",
+    "stopped": "kill switch pressed",
+    "resumed": "resumed from the app",
+    "foreground": "{package,label}",
+    "battery": "{level, charging} when level changes by 5% or charging state changes",
+    "power": "{plugged: bool}",
+    "screen": "{state: on|off|unlocked}",
+    "network": "{wifi: bool, ssid?}",
+    "notification": "{key,package,app,title,text,time,canReply} (only if mirroring is enabled on the phone)",
+    "notification_removed": "{key}",
+    "call_incoming": "{caller}",
+    "recorded_step": "teach mode live step"
   }
 }

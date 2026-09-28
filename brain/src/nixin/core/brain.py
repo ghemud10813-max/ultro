@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 import re
 import time
-from typing import Protocol
+from typing import Any, Protocol
 
 from nixin.agent.classifier import Classifier
 from nixin.agent.graph import PhoneAgent
@@ -24,18 +24,26 @@ from nixin.core.memory import Memory
 from nixin.core.replies import say
 from nixin.core.store import Store
 from nixin.link.phone import PhoneLink
+from nixin.link.protocol import PhoneError
 from nixin.llm.client import LlmError
 from nixin.llm.gateway import Gateway, NoCandidate
 from nixin.router.router import Intent, route
 
 _HINDI_WORDS = re.compile(
     r"\b(?:hai|hain|karo|kar|kardo|ko|do|de|bhej|bhejo|bol|bolo|ki|ka|ke|mein|me|pe|par|nahi|kya|aur|kholo|khol|"
-    r"chalao|chala|laga|lagao|badha|kam|band|batao|bata|mera|meri|mere|abhi|kal|aaj|baje|yaar|zara|jaldi|ruk|ruko|ja|jao|bas|haan|chal|raha|rahi|hoon|hu|tum|aap|mujhe|kuch|kaise|kyun|kaun|wala|wali)\b", re.I)
+    r"chalao|chala|laga|lagao|badha|kam|band|batao|bata|mera|meri|mere|abhi|kal|aaj|baje|yaar|zara|jaldi|ruk|ruko|ja|jao|bas|haan|chal|raha|rahi|hoon|hu|tum|aap|mujhe|kuch|kaise|kyun|kaun|wala|wali|"
+    r"sikho|seekho|sikh|dikhao|sunao|yaad|dilana|jab|har|roz|raat|subah|shaam|mausam|barish|baarish|uthao|utha|kaat|kitna|kitni|"
+    r"kahan|dhundo|chalaya|bhi|usko|wahi|hogi|hoga|karna|dena|lo|sikha)\b", re.I)
 
 
 class Speaker(Protocol):
     async def say(self, text: str) -> None: ...
     def stop(self) -> None: ...
+
+
+# intent kinds that never need the phone (features add theirs at install time)
+LOCAL_KINDS = {"chat", "reply", "clarify", "clock", "remember", "alias"}
+HUMAN_SOURCES = {"typed", "dashboard", "phone_text", "phone_voice", "voice", "wake_word", "api"}
 
 
 class Brain:
@@ -53,6 +61,9 @@ class Brain:
         self.agent = PhoneAgent(cfg, phone, gateway, actions, gate, memory, store, bus)
         self.speaker: Speaker | None = None
         self.current: TaskContext | None = None
+        self.app: Any = None  # set by NixinApp; gives access to feature modules (routines, skills, plugins…)
+        self.local_kinds: set[str] = set(LOCAL_KINDS)
+        self.last_reply: str = ""
         self._lock = asyncio.Lock()
         phone.on_command = self._from_phone
         phone.on_answer = lambda ask_id, value: self.gate.answer(ask_id, value)
@@ -72,29 +83,66 @@ class Brain:
             return pref
         return "hinglish" if _HINDI_WORDS.search(text) or re.search(r"[ऀ-ॿ]", text) else "english"
 
-    async def handle(self, text: str, source: str = "typed") -> str:
+    def _feature(self, name: str):
+        return getattr(self.app, name, None) if self.app is not None else None
+
+    async def handle(self, text: str, source: str = "typed", *, queue: bool = False, nested: bool = False,
+                     quiet: bool = False, trusted: bool = False, event: dict | None = None) -> str:
+        """Run one command. ``queue``: wait for a running task instead of answering "busy" (routines).
+        ``nested``: the caller already holds the brain (plugins calling ``ctx.run``)."""
         text = (text or "").strip()
         if not text:
             return ""
+        human = source in HUMAN_SOURCES
         # A pending question (confirm / choose / clarify) is answered by the next utterance.
-        if self.gate.pending and self.gate.answer(None, text):
+        if human and self.gate.pending and self.gate.answer(None, text):
             self.bus.emit("user", text=text, source=source, answer=True)
             return ""
+        if human:
+            expanded = self.memory.expand_references(text)
+            if expanded != text:
+                self.bus.emit("log", level="info", msg=f"Understood as: {expanded}")
+                text = expanded
         ctx = TaskContext(source=source, text=text, lang=self.lang_for(text),
-                          deadline=time.time() + self.cfg.assistant.max_task_seconds)
+                          deadline=time.time() + self.cfg.assistant.max_task_seconds,
+                          trusted=trusted, event=event or {}, quiet=quiet)
         r = route(text)
         if r.intents and len(r.intents) == 1 and r.intents[0].kind == "cancel":
             self.bus.emit("user", text=text, source=source)
             return await self._respond(ctx, self.cancel_current(ctx.lang))
-        if self._lock.locked():
+
+        # scenes you say out loud ("good night", "study mode") run their routine
+        routines = self._feature("routines")
+        if human and routines is not None and (scene := routines.match_phrase(text)) is not None:
+            return await self._scene(ctx, scene)
+
+        intents = r.intents
+        plugins = self._feature("plugins")
+        skills = self._feature("skills")
+        if source != "plugin" and plugins is not None and (pm := plugins.match(text)) is not None:
+            intents = [Intent("plugin", {"command": pm[0], "match": pm[1]}, text)]
+        elif skills is not None and (sm := skills.match(text)) is not None:
+            intents = [Intent("skill_run", {"id": sm[0].id, "name": sm[0].name, "arg": sm[1]}, text)]
+
+        if nested:
+            return await self._run(ctx, intents)
+        if self._lock.locked() and not queue:
             self.bus.emit("user", text=text, source=source, rejected="busy")
             return await self._respond(ctx, say("busy", ctx.lang))
         async with self._lock:
             self.current = ctx
             try:
-                return await self._run(ctx, r.intents)
+                return await self._run(ctx, intents)
             finally:
                 self.current = None
+
+    async def _scene(self, ctx: TaskContext, routine) -> str:
+        self.memory.add_turn("user", ctx.text, ctx.task_id)
+        self.bus.emit("user", text=ctx.text, source=ctx.source, taskId=ctx.task_id, routine=routine.name)
+        if not ctx.via_phone:
+            await self.phone.send_message({"t": "echo", "text": ctx.text, "source": ctx.source, "taskId": ctx.task_id})
+        replies = await self._feature("routines").run(routine, {}, "phrase", collect=True)
+        return await self._respond(ctx, " ".join(replies).strip() or say("done", ctx.lang))
 
     def cancel_current(self, lang: str = "hinglish") -> str:
         ctx = self.current
@@ -114,7 +162,7 @@ class Brain:
         self.memory.add_turn("user", ctx.text, ctx.task_id)
         self.bus.emit("user", text=ctx.text, source=ctx.source, taskId=ctx.task_id)
         self.bus.emit("task", taskId=ctx.task_id, status="running", text=ctx.text, source=ctx.source)
-        if not ctx.via_phone:
+        if not ctx.via_phone and not ctx.quiet:
             # keep the phone app's chat in sync with commands given on the PC
             await self.phone.send_message({"t": "echo", "text": ctx.text, "source": ctx.source, "taskId": ctx.task_id})
         outcomes: list[Outcome] = []
@@ -170,7 +218,7 @@ class Brain:
             if intent.kind == "agent":
                 o = await self._agent(ctx, intent.params["goal"], intent.params.get("hint"))
             else:
-                needs_phone = intent.kind not in ("chat", "reply", "clarify", "clock", "remember", "alias")
+                needs_phone = intent.kind not in self.local_kinds
                 if needs_phone and not self.phone.connected:
                     outcomes.append(Outcome(False, say("offline", ctx.lang), code="device.offline"))
                     break
@@ -193,7 +241,26 @@ class Brain:
         if announce and ctx.spoken:
             await self._speak_only(ctx, say("working", ctx.lang))
         self.store.update_task(ctx.task_id, route="agent")
+        skills = self._feature("skills")
+        if skills is not None and skills.auto_replay and (known := skills.auto_for(goal)) is not None:
+            ok, idx, err = await skills.replay(known, ctx)
+            known.runs += 1
+            if ok:
+                known.fails = 0
+                skills.save(known)
+                self.store.update_task(ctx.task_id, route="skill")
+                return Outcome(True, say("done", ctx.lang), {"skill": known.id})
+            known.fails += 1
+            skills.save(known)
+            if ctx.is_cancelled:
+                return Outcome(False, say("cancelled", ctx.lang))
+            hint = ((hint or "") + f" (A saved route stopped at step {idx + 1}: {err}. Continue from the current screen.)").strip()
         res = await self.agent.run(goal, ctx, hint=hint, max_steps=max_steps)
+        if res.status == "done" and skills is not None and not res.answer:
+            try:
+                skills.learn_from_agent(goal, res.history)
+            except Exception as e:  # noqa: BLE001
+                self.bus.emit("log", level="warning", msg=f"Could not save the learned route: {e!r}")
         if res.status == "done":
             return Outcome(True, res.answer or res.summary or say("done", ctx.lang), {"steps": res.steps})
         if res.status == "cancelled":
@@ -224,7 +291,11 @@ class Brain:
             await self.phone.say(text, speak=True, task_id=ctx.task_id)
 
     async def _respond(self, ctx: TaskContext, text: str) -> str:
+        if ctx.quiet:
+            self.bus.emit("say", text=text, taskId=ctx.task_id, source=ctx.source, quiet=True)
+            return text
         self.memory.add_turn("nixin", text, ctx.task_id)
+        self.last_reply = text
         self.bus.emit("say", text=text, taskId=ctx.task_id, source=ctx.source)
         pc, ph = self._targets(ctx)
         if pc and self.speaker:
@@ -232,3 +303,32 @@ class Brain:
         # always mirror the conversation into the phone app's chat; speak there only if targeted
         await self.phone.say(text, speak=ph, task_id=ctx.task_id)
         return text
+
+    # ------------------------------------------------------------------ proactive output (routines, alerts)
+    async def announce(self, text: str) -> None:
+        """Speak something Nixin decided to say on its own (routine, VIP message, battery alert)."""
+        text = (text or "").strip()
+        if not text:
+            return
+        self.bus.emit("say", text=text, source="announce")
+        mode = self.cfg.assistant.announce_on
+        if mode in ("pc", "both") and self.speaker:
+            asyncio.create_task(self.speaker.say(text))
+        await self.phone.say(text, speak=mode in ("phone", "both"))
+
+    async def post(self, text: str) -> None:
+        """Show a line in the chats (dashboard + phone) without speaking it."""
+        self.bus.emit("say", text=text, source="announce", silent=True)
+        await self.phone.say(text, speak=False)
+
+    async def notify(self, title: str, text: str = "") -> None:
+        """A notification on the phone and on the PC desktop."""
+        self.bus.emit("notify", title=title, text=text)
+        if self.phone.connected:
+            try:
+                await self.phone.call("nixin.notify", {"title": title[:120] or "Nixin", "text": text[:1000]}, origin="routine")
+            except PhoneError:
+                pass
+        pcf = self._feature("pc")
+        if pcf is not None:
+            await pcf.pc.notify(title, text)

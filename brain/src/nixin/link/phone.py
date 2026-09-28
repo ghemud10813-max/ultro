@@ -58,6 +58,10 @@ class PhoneLink:
         self.on_command: CommandHandler | None = None
         self.on_answer: AnswerHandler | None = None
         self.on_stopped: Callable[[], None] | None = None
+        # v2: inbound share/file messages from the phone's share sheet
+        self.on_share: Callable[[dict], Awaitable[None]] | None = None
+        self.on_file_chunk: Callable[[dict], Awaitable[None]] | None = None
+        self.on_connected: Callable[[], Awaitable[None]] | None = None
         self._connected = asyncio.Event()
 
     # ------------------------------------------------------------------ state
@@ -104,6 +108,7 @@ class PhoneLink:
             except Exception:
                 pass
         self.bus.emit("phone", connected=True, device=session.device, deviceId=session.device_id)
+        self.bus.emit("device_event", name="phone_connected", data={"device": session.device})
         asyncio.create_task(self._initial_sync())
 
     async def detach(self, session: PhoneSession, reason: str = "") -> None:
@@ -113,6 +118,7 @@ class PhoneLink:
             self.session = None
             self._connected.clear()
             self.bus.emit("phone", connected=False, reason=reason)
+            self.bus.emit("device_event", name="phone_disconnected", data={"reason": reason})
 
     async def _fail_pending(self, session: PhoneSession, code: str) -> None:
         for _id, (fut, method) in list(session.pending.items()):
@@ -135,6 +141,11 @@ class PhoneLink:
             self.apps = res.get("apps", [])
         except Exception:
             pass
+        if self.on_connected:
+            try:
+                await self.on_connected()
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------ inbound
     async def handle_message(self, session: PhoneSession, msg: dict) -> None:
@@ -168,10 +179,22 @@ class PhoneLink:
         elif t == "answer":
             if self.on_answer:
                 self.on_answer(str(msg.get("id")), str(msg.get("value", "")))
+        elif t == "share":
+            if self.on_share:
+                asyncio.create_task(self.on_share(msg))
+        elif t == "file":
+            if self.on_file_chunk:
+                await self.on_file_chunk(msg)
         else:
             self.bus.emit("log", level="warning", msg=f"Unknown message from phone: {t!r}")
 
     async def _handle_event(self, name: str, data: dict) -> None:
+        # one uniform stream for routines / dashboard, in addition to the specific handling below
+        self.bus.emit("device_event", name=name, data=data)
+        if name == "battery":
+            self.status["battery"] = {**(self.status.get("battery") or {}), **data}
+            self.bus.emit("phone_status", status=self.status)
+            return
         if name == "status":
             self.status.update(data)
             self.bus.emit("phone_status", status=self.status)
@@ -192,6 +215,10 @@ class PhoneLink:
             self.apps = data.get("apps", self.apps)
         elif name == "notification":
             self.bus.emit("notification", notification=data)
+        elif name == "notification_removed":
+            self.bus.emit("notification_removed", key=data.get("key"))
+        elif name == "recorded_step":
+            self.bus.emit("recorded_step", step=data)
         else:
             self.bus.emit("phone_event", name=name, data=data)
 
@@ -212,7 +239,7 @@ class PhoneLink:
         session = self.session
         if session is None or session.closed:
             raise PhoneError("device.offline")
-        if self.stopped and method not in ("device.status", "app.list"):
+        if self.stopped and method not in ("device.status", "app.list", "device.info", "rec.stop"):
             raise PhoneError("policy.stopped")
 
         req_id = str(uuid.uuid4())
@@ -248,7 +275,7 @@ class PhoneLink:
             raise
         finally:
             detail["ms"] = int((time.time() - started) * 1000)
-            if method not in ("device.status", "screen.capture", "app.list"):
+            if method not in ("device.status", "screen.capture", "app.list", "file.push", "ui.snapshot"):
                 self.store.audit(method, risk, origin, ok, detail, task_id)
                 self.bus.emit("action", method=method, risk=risk, origin=origin, ok=ok, taskId=task_id,
                               ms=detail["ms"], error=detail.get("error"))
