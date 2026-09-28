@@ -1,6 +1,6 @@
 [project]
 name = "nixin"
-version = "1.0.0"
+version = "2.0.0"
 description = "Nixin — a voice-controlled AI agent on your PC that operates your Android phone."
 readme = "README.md"
 requires-python = ">=3.11"

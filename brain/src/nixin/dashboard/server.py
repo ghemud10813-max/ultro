@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
 STATIC = Path(__file__).parent / "static"
 COOKIE = "nixin_token"
+MAX_UPLOAD = 200 * 1024 * 1024
 
 
 class Dashboard:
@@ -348,9 +349,13 @@ class Dashboard:
         async def push_file(request: Request, target: str):
             """Raw body upload (no multipart dependency): header x-file-name, content-type."""
             self._guard(request)
+            if int(request.headers.get("content-length") or 0) > MAX_UPLOAD:
+                raise HTTPException(413, "File too large (max 200 MB)")
             data = await request.body()
             if not data:
                 raise HTTPException(400, "empty file")
+            if len(data) > MAX_UPLOAD:
+                raise HTTPException(413, "File too large (max 200 MB)")
             name = unquote(request.headers.get("x-file-name") or "file")
             mime = request.headers.get("content-type") or "application/octet-stream"
             try:

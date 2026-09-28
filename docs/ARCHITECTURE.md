@@ -48,6 +48,28 @@ flowchart LR
     DS <--> BR
 ```
 
+## Nixin 2.0: feature modules
+
+`brain/src/nixin/features/` holds the 2.0 capabilities. Each is a small `Feature` that registers handlers for its
+intent kinds into `Actions.handlers` (same signature as the built-in actions, so the router, the classifier and plugins
+all reach them the same way) and may run background tasks:
+
+| Module | Intent kinds | Background |
+|---|---|---|
+| `routines.py` (RoutineEngine) | routine_add, reminder, routine_run/list/toggle/delete | 15 s clock + the bus `device_event` stream |
+| `skills.py` | skill_teach/save/cancel/run/list/delete | — (also used by the agent: replay known routes first, learn new ones) |
+| `notifications.py` | notif_reply/summary/clear/open | live mirror: toasts + VIP announcements |
+| `bridge.py` | inbox | phone `share` / `file` messages → `~/Nixin Inbox`; `push_bytes` → `file.push` |
+| `pc.py` + `pc_control.py` | pc | — |
+| `phone_extras.py` | find_phone, locate_phone, call_control, now_playing, usage, device_info, device_setting | — |
+| `screen.py` | screen_read | — |
+| `briefing.py` + `weather.py` | weather, briefing | — |
+| `plugins.py` | plugin | loads `<data dir>/plugins/*.py` |
+
+The Brain checks, in order: pending question → scene phrases (routines) → plugins → taught skills → router →
+classifier → agent. Routine and plugin sub-commands run as `quiet` tasks (queued behind the current task, replies
+collected instead of spoken). `Brain.announce()` / `notify()` / `post()` are the proactive outputs.
+
 ## The three execution lanes
 
 | Lane | When | Cost | Example |

@@ -31,6 +31,8 @@ max_task_seconds = 180
 verify_finish = true         # double-check agent results with the verifier model
 default_country_code = "91"  # for 10-digit numbers
 history_turns = 6
+city = ""                    # for weather & briefing; empty = the phone's location (if allowed)
+announce_on = "both"         # where routine alerts / VIP messages are spoken: pc | phone | both
 
 [privacy]
 cloud_llm = true             # command text + compact screen text -> LLM providers
@@ -38,6 +40,7 @@ cloud_stt = true             # voice audio -> Groq Whisper (else local faster-wh
 cloud_vision = false         # screenshots -> vision model (agent `look`)
 
 [voice]
+follow_up_seconds = 4.0      # after Nixin asks something by voice, keep listening this long (0 = off)
 enabled = true
 push_to_talk = "<ctrl>+<alt>+n"
 kill_switch = "<ctrl>+<alt>+k"
@@ -82,3 +85,22 @@ adb_path = "adb"
 
 [blocklist]
 extra_packages = []          # more apps Nixin must never touch (banking/UPI/password apps are built in)
+
+[bridge]
+inbox_dir = ""               # files shared from the phone; default: ~/Nixin Inbox
+clipboard_on_share = true    # text/links shared from the phone go to the PC clipboard
+open_links = false           # links shared from the phone open in the PC browser
+
+[notifications]              # live feed needs "Mirror notifications" on in the phone app
+announce = true              # speak messages from VIPs / announce_apps
+vip = []                     # e.g. ["Mummy", "Papa", "Boss"]
+announce_apps = []           # e.g. ["whatsapp"] = announce every WhatsApp notification
+toast_on_pc = true           # show phone notifications as desktop notifications
+
+[routines]
+enabled = true               # time / event / phrase automations ("har raat 11 baje…", "jab battery 20%…")
+builtin = true               # install the built-in scenes on first run (good night, study mode, …)
+
+[plugins]
+enabled = true
+dirs = []                    # extra plugin folders; <data dir>/plugins is always loaded (see docs/PLUGINS.md)

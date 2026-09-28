@@ -46,3 +46,22 @@ Answer on any channel: voice ("haan"/"nahi"), phone dialog or notification butto
 | Replies (TTS) | Microsoft edge-tts | use `pyttsx3`/`piper` for offline |
 
 Nothing else: no telemetry, no relay server. Logs: the audit log truncates message bodies; screenshots and audio are never stored.
+
+## Nixin 2.0 additions
+- **Routines** run their commands with source `routine`: messages, calls and notification replies inside a routine
+  still ask you (phone dialog + dashboard) unless you explicitly mark that routine *Trusted* on the dashboard.
+  Routines created by voice are never trusted.
+- **Notification replies** (`notif.reply`) are `external` like messages: the phone refuses them without
+  `confirmed=true`, and the PC applies the same confirmation policy as for messages.
+- **Mirroring** of notifications and incoming-call names is **off** until you enable it on the phone; OTP-like text is
+  masked on the phone and blocked apps are never mirrored. Battery/charger/screen/Wi-Fi events can be turned off too.
+- **Teach mode** never records password fields or blocked apps, and an ongoing notification (Save / Cancel) is shown the
+  whole time it records. Recorded steps are stored only on your PC.
+- **PC shutdown/restart** always asks, even from trusted sources, and is scheduled with a 1-minute delay you can cancel.
+- **Launcher shortcuts** can only run a fixed allowlist of harmless commands (the shortcut activity is exported).
+- **Plugins** are code you install on your own PC; they run with your permissions, and messages/calls they start
+  through `ctx.run()` still go through the confirmation policy.
+- **Location** is read only when the PC asks (find-my-phone, weather) and needs your explicit permission.
+- Files you share go only over the paired, pinned-TLS link; received files are written to `~/Nixin Inbox` (PC) and
+  `Downloads/Nixin` (phone) with sanitised names.
+

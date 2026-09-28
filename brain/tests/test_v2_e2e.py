@@ -369,3 +369,18 @@ async def test_plugins(v2):
     assert await app.brain.handle("sikka uchalo") == "Heads!"
     assert await app.brain.handle("party mode") == "Party shuru!"
     assert sim.torch is True
+
+
+async def test_example_plugin_file(v2):
+    import shutil
+
+    app, sim, client, llm = v2
+    folder = app.cfg.data_path / "plugins"
+    folder.mkdir(parents=True, exist_ok=True)
+    shutil.copy(ROOT / "brain" / "examples" / "plugins" / "fun_and_tools.py", folder / "fun_and_tools.py")
+    app.plugins.load()
+    assert {"coin", "dice", "party", "notepad"} <= {c.name for c in app.plugins.commands}
+    assert (await app.brain.handle("sikka uchalo")).startswith(("Heads", "Tails"))
+    assert (await app.brain.handle("roll a dice"))[0] in "123456"
+    await app.brain.handle("pc pe notepad kholo aur likho milk and eggs")
+    assert ("open", "notepad") in app.pc.pc.calls and ("type", "milk and eggs") in app.pc.pc.calls

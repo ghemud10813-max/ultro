@@ -4,7 +4,6 @@ import android.app.Notification
 import android.app.NotificationManager
 import android.content.Intent
 import android.graphics.Rect
-import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import com.letvler.nixin.Nixin
 import com.letvler.nixin.R
@@ -98,7 +97,7 @@ object Recorder {
                 mapOf("a" to "type", "package" to pkg, "text" to text, "res" to res, "hint" to hint)
             }
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> {
-                val dy = if (Build.VERSION.SDK_INT >= 28) event.scrollDeltaY else 0
+                val dy = event.scrollDeltaY
                 if (dy == 0) return
                 val dir = if (dy > 0) "down" else "up"
                 synchronized(steps) {

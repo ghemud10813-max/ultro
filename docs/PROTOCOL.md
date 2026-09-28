@@ -1,4 +1,4 @@
-# Nixin Link protocol (v1)
+# Nixin Link protocol (v1, with 2.0 additions)
 
 One WebSocket, phone → PC: `wss://<pc>:8765/link`. UTF-8 JSON text frames, max 4 MiB. The method registry with JSON-Schema params lives in [`shared/protocol/methods.json`](../shared/protocol/methods.json); the PC validates every request against it before sending and both test suites check they match it.
 
@@ -42,7 +42,11 @@ A fresh nonce per connection means a recorded handshake can't be replayed. A new
 | `ask` | PC → phone | `id, kind: confirm\|choose\|input, text, options[], timeoutSec` | question for you |
 | `answer` | phone → PC | `id, value` | your answer ("yes"/"no"/option/text) |
 | `cancel` | PC → phone | `taskId, reason` | abort in-flight work of a task |
-| `event` | phone → PC | `name: status\|stopped\|resumed\|foreground, data` | state changes |
+| `event` | phone → PC | `name, data` (see *Events*) | state changes |
+| `share` | phone → PC | `text, subject?` | text/link from the share sheet → PC inbox + clipboard |
+| `file` | phone → PC | `transferId, name, mime, index, total, data` (base64, ≤300 KB raw per chunk, in order) | file from the share sheet → `~/Nixin Inbox` |
+| `file_ack` | PC → phone | `transferId, ok, name \| error` | after the last chunk (or on error) |
+| `scenes` | PC → phone | `items[{label, text}]` | quick-action chips (scenes + taught skills); tapping sends `text` as a command |
 | `ping`/`pong` | both | `ts` | heartbeat: PC pings every 15 s; either side drops the link after ~60 s of silence |
 
 Close codes: 4000 replaced, 4001 auth failed, 4005 timeout, 4006 unpaired.
@@ -78,12 +82,49 @@ Close codes: 4000 replaced, 4001 auth failed, 4005 timeout, 4006 unpaired.
 | `ui.tap_text` | nav | text, exact, index | tapped |
 | `ui.wait` | read | text, package, gone, timeoutMs | matched, ms |
 | `screen.capture` | read | maxWidth, quality | mime, width, height, screenWidth, screenHeight, data (base64 JPEG) |
+| **2.0** | | | |
+| `device.info` | read | – | manufacturer, model, android, sdk, storage{freeBytes,totalBytes}, ram{availBytes,totalBytes}, uptimeMs, battery{level,health,temperatureC,charging}, network{type,ssid}, screen{timeoutMs,autoRotate} |
+| `device.ring` | local | seconds, stop | ringing, seconds (alarm stream at max + vibration + torch; Stop in the notification) |
+| `device.location` | read | timeoutMs | lat, lon, accuracy, provider, time |
+| `device.setting` | local | name auto_rotate\|screen_timeout\|haptics, value | name, value |
+| `device.vibrate` | local | ms | ms |
+| `device.wallpaper` | local | data (base64 image), target home\|lock\|both | set, width, height |
+| `clipboard.set` / `clipboard.get` | local / read | text / – | ok / text (Android allows reading only while Nixin is foreground → `device.unsupported`) |
+| `file.push` | local | transferId, name, mime, index, total, data | received / saved, path, uri (Downloads/Nixin via MediaStore) |
+| `notif.reply` | **external** | key, text | sent (uses the notification's RemoteInput reply action) |
+| `notif.dismiss` / `notif.open` | local / nav | key or all / key | dismissed / opened |
+| `media.now_playing` | read | – | title, artist, album, app, package, state, positionMs, durationMs |
+| `call.control` | local | action answer\|end\|speaker_on\|speaker_off\|mute\|unmute | action, inCall |
+| `usage.stats` | read | period today\|yesterday\|week, limit | totalMs, unlocks, apps[{package,label,ms}] |
+| `ui.text` | read | maxChars | package, app, text (visible text in reading order, passwords excluded) |
+| `ui.scroll_to` | nav | text, direction, maxScrolls | found, scrolls |
+| `rec.start` / `rec.stop` | read | name / cancel | recording / name, steps[{a: open\|tap\|type\|scroll, package, text, desc, res, role, b, hint, dir}] |
+| `nixin.notify` | local | title, text, id | shown, id |
+
+`notif.list` items carry `key` and `canReply`.
+
+## Events (phone → PC)
+
+| name | data | when |
+|---|---|---|
+| `status` / `foreground` / `stopped` / `resumed` | status payload / `{package,label}` / – | as before |
+| `battery` | `{level, charging}` | every 5 % (every 1 % below 30 %), charging change, 100 % |
+| `power` | `{plugged, level}` | charger in/out |
+| `screen` | `{state: on\|off\|unlocked}` | screen events |
+| `network` | `{wifi, ssid?}` | Wi-Fi connects/disconnects |
+| `notification` | `{key, package, app, title, text, time, canReply}` | only with *Mirror notifications* on |
+| `notification_removed` | `{key}` | only with *Mirror notifications* on |
+| `call_incoming` | `{caller, app}` | only with *Mirror notifications* on |
+| `recorded_step` | one teach-mode step | while recording |
+
+Battery/power/screen/network events can be switched off on the phone (*Send phone events*). The PC turns all of them
+into one `device_event` stream that drives routines.
 
 Element format: `{"id":7,"role":"input","text":"…","desc":"…","hint":"…","res":"entry","b":[l,t,r,b],"flags":["click","edit","focus","scroll","long","sel","off","pwd"],"checked":true}`.
 
 ### Rules the phone enforces
 1. Unknown method → `unknown_method`.
-2. Kill switch on → everything except `device.status`/`app.list` → `policy.stopped`.
+2. Kill switch on → everything except `device.status`/`app.list`/`device.info`/`rec.stop` → `policy.stopped`.
 3. `external` methods need `meta.confirmed=true` → else `policy.confirmation_required`.
 4. Screen methods: phone locked → `device.locked`; blocked foreground app → `policy.blocked_app`.
 5. Taps on controls labelled Send/Pay/Buy/Delete/Call/Post… need `confirmed` → else `policy.confirmation_required` (the PC then asks you and retries once with `confirmed=true`).

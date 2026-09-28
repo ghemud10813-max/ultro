@@ -97,6 +97,7 @@ class NixinApp:
         self.dashboard = None
         self.dashboard_token: str | None = None
         self._servers: list[EmbeddedServer] = []
+        self._bg: list[asyncio.Task] = []
         self.link_server: EmbeddedServer | None = None
         self.store.purge_older_than(30)
 
@@ -154,6 +155,7 @@ class NixinApp:
 
         for f in self.features:
             await f.start()
+        self._bg.append(asyncio.create_task(self._sync_scenes()))
         asyncio.create_task(self._probe())
 
     def dashboard_url(self, port: int | None = None) -> str:
@@ -167,6 +169,18 @@ class NixinApp:
         except Exception as e:  # noqa: BLE001
             self.bus.emit("log", level="warning", msg=f"Provider probe failed: {e}")
 
+    async def _sync_scenes(self) -> None:
+        """Keep the phone's quick chips in sync when routines or skills change."""
+        q = self.bus.subscribe()
+        try:
+            while True:
+                ev = await q.get()
+                if ev["type"] in ("routines_changed", "skills_changed") and self.phone.connected:
+                    await asyncio.sleep(0.2)
+                    await self._on_phone_connected()
+        finally:
+            self.bus.unsubscribe(q)
+
     async def _on_phone_connected(self) -> None:
         """Send the phone its quick-action chips (scenes + taught skills)."""
         chips = [{"label": p["name"], "text": p["phrase"]} for p in self.routines.phrases()]
@@ -174,6 +188,8 @@ class NixinApp:
         await self.phone.send_message({"t": "scenes", "items": chips[:16]})
 
     async def stop(self) -> None:
+        for t in self._bg:
+            t.cancel()
         for f in reversed(getattr(self, "features", [])):
             try:
                 await f.stop()

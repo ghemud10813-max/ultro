@@ -21,6 +21,18 @@
 - [x] CLI, phone simulator, demo mode, ADB power mode templates
 - [x] CI: Python tests, APK build + unit tests + lint, APK artifact
 
+## Done (v2.0)
+- [x] Routine engine: time / interval / once / phone-event / phrase triggers, built-in scenes, cooldowns, trusted routines
+- [x] Voice-created routines and reminders ("har raat 11 baje…", "jab battery 20% se kam ho…", "10 minute baad yaad dilana…")
+- [x] Teach mode (accessibility recording → semantic steps → verified replay with agent fallback) + auto-learned agent routes
+- [x] Notification quick-reply (RemoteInput), dismiss/open, live mirror, VIP announcements, LLM summaries
+- [x] PC ⇄ phone bridge: share target, chunked files both ways, clipboard, wallpaper, inbox
+- [x] PC control: lock/sleep/shutdown(confirm)/volume/media/open/search/type/screenshot/status/notifications
+- [x] Phone: find-my-phone ring, location, call control, now playing, screen time, device info, system settings, seek
+- [x] Screen reading + summaries; agent tools `find_text`, `read_screen`
+- [x] Weather (Open-Meteo) + daily briefing; follow-up voice listening; pronoun/"same message" follow-ups
+- [x] Plugin API + example plugin; dashboard Automations / Notifications / Files / Phone & PC tabs; phone quick chips & shortcuts
+
 ## Device test checklist (do this on your Samsung first)
 Run `nixin run`, keep the dashboard open, and tick these off. Anything that fails: note the command, the dashboard timeline and the phone's Activity tab.
 
@@ -35,12 +47,24 @@ Run `nixin run`, keep the dashboard open, and tick these off. Anything that fail
 9. **Safety** — open a banking app manually and ask "screen pe kya hai" → refused; focus a password field and ask to type → refused.
 10. **Mirror** — enable Allow screenshots → dashboard mirror updates ~1 fps, click taps.
 
+### 2.0 checklist
+11. **Routines** — `har raat 11 baje phone silent kar dena` (then edit the time on the dashboard to 2 minutes from now and wait); `jab charger lagaun to bata dena` → plug in; `good night`.
+12. **Reminders** — `2 minute baad yaad dilana ki chai` → phone notification + spoken reminder.
+13. **Teach mode** — `sikho: mummy chat` → open WhatsApp, tap Mummy → Save in the notification → go home → `mummy chat chalao`.
+14. **Notifications** — enable *Mirror notifications*; send yourself a WhatsApp from another phone → appears on the dashboard; reply from the dashboard; `X ko reply karo: ok`; add yourself as VIP → spoken.
+15. **Bridge** — share a photo to *Send to PC* → `~/Nixin Inbox`; drop a PDF on the dashboard → phone Downloads/Nixin; `ye photo wallpaper laga do`.
+16. **PC control** — from the phone: `PC lock karo`, `PC ka screenshot bhejo`, `laptop ka volume kam karo`.
+17. **Find my phone** — put the phone on silent, `mera phone kahan hai` → rings at full volume; Stop from the notification; `phone ki location batao` (Location: Allow all the time).
+18. **Calls** — have someone call you: `call utha lo`, `speaker on karo`, `call kaat do` (Answer-calls permission).
+19. **Screen time / info** — grant Usage access → `aaj maine phone kitna chalaya`; `storage kitna bacha hai`.
+20. **Screen reading** — open an article → `ye padh ke sunao`, `iska summary do`.
+
 ## Next
 - [ ] Tune WhatsApp selectors for your installed version (ids `entry`/`send` are standard, but WhatsApp experiments with layouts)
-- [ ] Notification quick-reply (RemoteInput) so "Rahul ko reply karo …" works without opening WhatsApp
 - [ ] Custom "Hey Nixin" wake-word model (openWakeWord Colab) + false-accept measurement
 - [ ] Windows lock → pause the link; DPAPI-protected TLS key
-- [ ] Per-app "recipes" (known flows cached from successful agent runs to skip LLM calls next time)
+- [ ] Parameterised skills with more than one argument ("pizza order: margherita, large")
+- [ ] Location-based routines (geofences) and calendar-driven briefings
 - [ ] Hindi (Devanagari) message bodies through the router (currently go to the classifier)
 - [ ] Instrumented Android tests on a real device / emulator in CI
 - [ ] Multi-phone support
